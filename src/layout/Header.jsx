@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { DISCORD_URL, images } from '../data/site.js'
+import { DISCORD_URL, DONATE_URL, images } from '../data/site.js'
 
 export default function Header() {
   const [open, setOpen] = useState(false)
@@ -37,7 +37,7 @@ export default function Header() {
           <NavLink className={active} to="/servers">Our Servers</NavLink>
           <NavLink className={active} to="/enlist">Enlist</NavLink>
           <NavLink className={active} to="/wardogs">WARDOGS</NavLink>
-          <NavLink className={active} to="/donate">Donate</NavLink>
+          <a className="donate-link" href={DONATE_URL} target="_blank" rel="noreferrer">Donate</a>
           <a className="discord-link" href={DISCORD_URL} target="_blank" rel="noreferrer">Join Discord</a>
         </nav>
       </div>

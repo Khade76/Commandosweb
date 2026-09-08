@@ -124,7 +124,7 @@ nav a.active,
   display: flex;
   align-items: center;
   min-height: 100svh;
-  background: var(--hero-image, url('/assets/commandos-hero.svg')) center / cover no-repeat;
+  background: var(--hero-image, url('/assets/Discord_Banner_B.jpg')) center / cover no-repeat;
   overflow: hidden;
 }
 .page-hero { min-height: 68svh; padding-top: 82px; }
@@ -243,7 +243,7 @@ em { font-style: normal; color: var(--gold); }
   content: '';
   position: absolute;
   inset: 0;
-  background: url('/assets/commandos-hero.svg') center / cover;
+  background: url('/assets/Discord_Banner_B.jpg') center / cover;
   opacity: .24;
 }
 .company-card > * { position: relative; }

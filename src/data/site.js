@@ -3,11 +3,11 @@ export const DONATE_URL = 'https://ko-fi.com/44thwardogs'
 export const STEAM_URL = 'https://store.steampowered.com/app/1867240/WARDOGS/'
 
 export const images = {
-  mark: '/assets/44th-mark.svg',
-  patch: '/assets/44th-patch.svg',
-  hero: '/assets/commandos-hero.svg',
-  wide: '/assets/commandos-wide.svg',
-  banner: '/assets/commandos-banner.svg',
+  mark: '/assets/44TH_CMM_Simple_DS_v4.png',
+  patch: '/assets/44TH_CMM_Patch_DS_v4.png',
+  hero: '/assets/Discord_Banner_B.jpg',
+  wide: '/assets/Commandos_V5.jpg',
+  banner: '/assets/Commandos_V5.jpg',
 }
 
 export const companies = [

@@ -87,7 +87,7 @@ PORT=8080 npm start
 - `/servers`
 - `/enlist`
 - `/wardogs`
-- `/donate`
+- `/donate` (legacy redirect to Ko-fi; navigation links open Ko-fi directly)
 
 ## API
 

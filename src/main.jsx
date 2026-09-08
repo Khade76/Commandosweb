@@ -22,7 +22,7 @@ class AppErrorBoundary extends Component {
     if (this.state.error) {
       return (
         <section className="app-error">
-          <img src="/assets/44th-patch.svg" alt="44th Commando Regiment" />
+          <img src="/assets/44TH_CMM_Patch_DS_v4.png" alt="44th Commando Regiment" />
           <p className="kicker">44TH COMMANDO REGIMENT // WARDOGS</p>
           <h1>Website failed to load</h1>
           <p>The page hit a React error instead of rendering. Open the browser console for the exact stack trace.</p>

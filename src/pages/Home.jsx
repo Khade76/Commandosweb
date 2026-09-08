@@ -22,7 +22,7 @@ export default function Home() {
           <div>
             <p className="kicker">44TH COMMANDO REGIMENT // WARDOGS</p>
             <h1>Move as one.<br /><em>Hit like 44.</em></h1>
-            <p className="hero-copy">A UK-led WARDOGS community built for players who want communication, coordinated teamwork and organised large-scale combat without losing the fun.</p>
+            <p className="hero-copy">WARDOGS, but with the 44th find a place where there is a focus on community building, finding friendly characters and exceptional servers.</p>
             <div className="actions">
               <a className="button primary" href={DISCORD_URL} target="_blank" rel="noreferrer">Enlist on Discord ↗</a>
               <Link className="button" to="/servers">Our Servers</Link>

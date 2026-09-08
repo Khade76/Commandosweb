@@ -1,0 +1,1 @@
+Last temporary note. Routed files are committed; next step is to make them the default entrypoints.

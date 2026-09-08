@@ -4,7 +4,7 @@ A responsive single-page community website inspired by the structure and feel of
 
 ## Included
 
-- Full-screen hero with 44th artwork
+- Full-screen hero with supplied 44th artwork
 - Responsive desktop/mobile navigation
 - About / mission section
 - WARDOGS format strip
@@ -12,7 +12,6 @@ A responsive single-page community website inspired by the structure and feel of
 - Discord enlistment flow
 - Final recruitment CTA
 - Mobile menu and scroll-reveal effects
-- Original 44th imagery copied from the supplied Google Drive folders
 
 ## Discord
 
@@ -30,12 +29,14 @@ Then open `http://localhost:8080`.
 
 ## Deployment
 
-The site is static HTML/CSS/JS, so it can be uploaded directly to standard web hosting, GitHub Pages, Cloudflare Pages, Netlify, Vercel, or an OVH web root.
+The site is static HTML/CSS/JS, so it can be hosted directly with GitHub Pages, Cloudflare Pages, Netlify, Vercel, OVH, or another standard web host.
 
 ## Editing company copy
 
 Company descriptions are in `index.html` under `#companies`. They are draft recruitment copy and can be replaced with official company roles/descriptions whenever those are finalised.
 
-## Assets
+## Artwork
 
-All supplied 44th imagery is stored under `/assets`. The WARDOGS game link points to the official Steam page. This community site is not affiliated with BULKHEAD or Team17.
+The deployed repository references the supplied public Google Drive artwork through direct image URLs. `remote-assets.css` contains the background artwork mappings, while the logo/patch image URLs are in `index.html`.
+
+The WARDOGS game link points to the official Steam page. This community site is not affiliated with BULKHEAD or Team17.

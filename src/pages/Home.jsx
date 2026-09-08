@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { DISCORD_URL, companies, images } from '../data/site.js'
+import { DISCORD_URL, DONATE_URL, companies, images } from '../data/site.js'
 
 function CompanyCard({ company }) {
   return (
@@ -26,6 +26,7 @@ export default function Home() {
             <div className="actions">
               <a className="button primary" href={DISCORD_URL} target="_blank" rel="noreferrer">Enlist on Discord ↗</a>
               <Link className="button" to="/servers">Our Servers</Link>
+              <a className="button" href={DONATE_URL} target="_blank" rel="noreferrer">Skip the queue</a>
             </div>
           </div>
           <aside className="identity-card">

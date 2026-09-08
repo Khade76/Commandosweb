@@ -13,12 +13,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "express": "^5.2.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.0.2",
-    "vite": "^7.1.5"
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.2.2"
   }
 }

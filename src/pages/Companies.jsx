@@ -15,7 +15,7 @@ export default function Companies() {
       <section className="section company-list">
         {companies.map((company) => (
           <article className="company-row" key={company.key}>
-            <div className="row-number">{company.number}</div>
+            <img className="company-list-logo" src={company.logo} alt={`${company.name} Company logo`} width="1000" height="1000" loading="lazy" />
             <div>
               <p className="kicker">{company.tag}</p>
               <h2>{company.name} <em>Company</em></h2>

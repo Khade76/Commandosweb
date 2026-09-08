@@ -21,7 +21,7 @@ export default function Company() {
         </div>
       </section>
       <section className="section split">
-        <div className="company-symbol"><span>{company.watermark}</span><img src={images.patch} alt="44th patch" /></div>
+        <div className="company-symbol"><img src={company.logo} alt={`${company.name} Company logo`} width="1000" height="1000" loading="lazy" /></div>
         <div className="copy-panel"><p className="kicker">{company.tag}</p><h2>{company.name}<br /><em>at a glance.</em></h2><p>{company.detail}</p><div className="focus-grid">{company.focus.map((focus) => <span key={focus}>{focus}</span>)}</div></div>
       </section>
     </>

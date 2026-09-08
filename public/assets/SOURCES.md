@@ -8,3 +8,7 @@ Copied unchanged from the supplied [Google Drive folder](https://drive.google.co
 | 44TH_CMM_Patch_DS_v4.png | Regiment patch, favicon, loading and error screens | [Logos/v4](https://drive.google.com/file/d/1vZThLLplk_Hzg-oqS8oEMwCJ4srVH7bT/view) |
 | Discord_Banner_B.jpg | Home and default page backgrounds | [Banners](https://drive.google.com/file/d/1LVPUZz37e_eGQt9kzY_EKfbbEIEHOifi/view) |
 | Commandos_V5.jpg | Wide/banner page backgrounds and sharing image | [Banners](https://drive.google.com/file/d/1kZGrzR_a_Ux9hYSUhetGSEvfj2NZGkBK/view) |
+
+## Company logos
+
+The original user-supplied `VANGUARD2.png`, `SPECTRE.png`, and `SPARTAN1.png` are copied unchanged into `companies/`. Used on homepage cards, the company directory, and individual company pages.

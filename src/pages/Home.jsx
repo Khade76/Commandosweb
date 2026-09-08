@@ -4,8 +4,8 @@ import { DISCORD_URL, DONATE_URL, companies, images } from '../data/site.js'
 function CompanyCard({ company }) {
   return (
     <article className={`company-card company-${company.key}`}>
-      <div className="company-watermark">{company.watermark}</div>
       <div className="company-topline"><span>{company.number}</span><span>{company.tag}</span></div>
+      <img className="company-card-logo" src={company.logo} alt={`${company.name} Company logo`} width="1000" height="1000" loading="lazy" />
       <h3>{company.name} <em>Company</em></h3>
       <p>{company.description}</p>
       <Link to={`/companies/${company.key}`}>View company →</Link>

@@ -30,7 +30,7 @@ export default function Rules() {
                 <p>{section.description}</p>
                 {section.rules.length > 0 && (
                   <ol className="rules-list">
-                    {section.rules.map((rule) => <li key={rule.title}><h3>{rule.title}</h3><p>{rule.text}</p></li>)}
+                    {section.rules.map((rule) => <li key={rule.text}>{rule.title && <h3>{rule.title}</h3>}<p>{rule.text}</p></li>)}
                   </ol>
                 )}
               </div>

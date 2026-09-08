@@ -1,1 +1,0 @@
-Routing implementation files were added under `.routed` names plus `src/pages`, `src/layout`, `src/data`, and `public/assets`.

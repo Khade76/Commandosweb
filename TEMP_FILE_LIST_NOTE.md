@@ -1,1 +1,0 @@
-The useful routed files are in src/pages, src/layout, src/data, public/assets, src/App.routed.jsx, src/main.routed.jsx, index.routed.html and server/index.routed.js.

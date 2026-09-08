@@ -2,75 +2,56 @@
 
 React + Node.js website for the 44th Commando Regiment WARDOGS community.
 
-## Stack
-
-- React 19
-- Vite 8
-- Node.js 20+
-- Express 5
-
 ## Included
 
-- Full-screen 44th/WARDOGS recruitment homepage
-- Responsive desktop/mobile navigation
-- Vanguard Company, Spectre Company and Spartan Company sections
-- Discord enlistment links
-- Scroll reveal effects
+- Routed React/Vite frontend
 - Express production server
-- `/api/health` endpoint ready for future API integrations
-- Supplied 44th Google Drive artwork
+- Separate pages for Home, About, Companies, individual company pages, Our Servers, Enlist, WARDOGS and Donate
+- Local assets under `public/assets`, so the site no longer depends on Google Drive hotlinks
+- Ko-fi Donate link: https://ko-fi.com/44thwardogs
+- Discord link: https://discord.gg/44thwardogs
+- Future-ready `/api/servers` endpoint for WARDOGS server status cards
+- `/api/health` endpoint for deployment checks
 
-## Discord
+## Routes
 
-https://discord.gg/44thwardogs
+- `/`
+- `/about`
+- `/companies`
+- `/companies/vanguard`
+- `/companies/spectre`
+- `/companies/spartan`
+- `/servers`
+- `/enlist`
+- `/wardogs`
+- `/donate`
 
-## Development
-
-Install dependencies:
+## Run locally
 
 ```bash
 npm install
-```
-
-Start the Vite development server:
-
-```bash
 npm run dev
 ```
 
 The development site runs on port `5173` by default.
 
-## Production
-
-Build the React frontend:
+## Build and run production
 
 ```bash
 npm run build
-```
-
-Start the Node.js/Express server:
-
-```bash
 npm start
 ```
 
-The production server uses `PORT` when supplied, otherwise port `3000`.
-
-Example:
-
-```bash
-PORT=8080 npm start
-```
+The production server listens on `PORT` or defaults to `3000`.
 
 ## API
 
-Health check:
-
 ```text
 GET /api/health
+GET /api/servers
 ```
 
-This Node server can be expanded later for live WARDOGS server status, recruitment applications, Discord integrations, company rosters, authentication, administration tools, or other dynamic features.
+`/api/servers` currently returns placeholder WARDOGS server cards and can later be replaced with live server query data, whitelisting state, player counts, map names, restart notices or admin information.
 
 ## Project structure
 
@@ -78,18 +59,17 @@ This Node server can be expanded later for live WARDOGS server status, recruitme
 .
 ├── index.html
 ├── package.json
-├── vite.config.js
-├── styles.css
-├── remote-assets.css
+├── public/
+│   └── assets/
 ├── src/
 │   ├── App.jsx
-│   └── main.jsx
+│   ├── main.jsx
+│   ├── data/
+│   ├── layout/
+│   └── pages/
 └── server/
-    └── index.js
+    ├── index.js
+    └── servers.js
 ```
-
-## Artwork
-
-The site currently references the supplied public Google Drive artwork using direct image URLs. `remote-assets.css` contains the background-image mappings and `src/App.jsx` contains the foreground logo/patch/banner references.
 
 The WARDOGS game link points to the official Steam page. This community website is not affiliated with BULKHEAD or Team17.

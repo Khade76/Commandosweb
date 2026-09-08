@@ -86,10 +86,13 @@ PORT=8080 npm start
 - `/companies/spartan`
 - `/servers`
 - `/enlist`
-- `/wardogs`
+- `/rules`
+- `/wardogs` (legacy alias for Rules)
 - `/donate` (legacy redirect to Ko-fi; navigation links open Ko-fi directly)
 
 ## API
+
+Rules content lives in `src/data/rules.js`. Add a category with a stable `id`, `title`, `description`, and a `rules` array of `{ title, text }` entries. Empty categories display “Not published”; only add game or event rules once agreed. The layout uses the expandable categories on https://www.44thsquad.com/rules as a reference, with community wording adapted for this site.
 
 Health check:
 

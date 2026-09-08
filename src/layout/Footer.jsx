@@ -15,7 +15,7 @@ export default function Footer() {
           <Link to="/companies">Companies</Link>
           <Link to="/servers">Our Servers</Link>
           <Link to="/enlist">Enlist</Link>
-          <Link to="/wardogs">WARDOGS</Link>
+          <Link to="/rules">Rules</Link>
           <a href={DONATE_URL} target="_blank" rel="noreferrer">Donate</a>
           <a href={DISCORD_URL} target="_blank" rel="noreferrer">Discord</a>
           <a href={STEAM_URL} target="_blank" rel="noreferrer">Steam</a>

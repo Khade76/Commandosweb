@@ -36,7 +36,7 @@ export default function Header() {
           <NavLink className={active} to="/companies">Companies</NavLink>
           <NavLink className={active} to="/servers">Our Servers</NavLink>
           <NavLink className={active} to="/enlist">Enlist</NavLink>
-          <NavLink className={active} to="/wardogs">WARDOGS</NavLink>
+          <NavLink className={active} to="/rules">Rules</NavLink>
           <a className="donate-link" href={DONATE_URL} target="_blank" rel="noreferrer">Donate</a>
           <a className="discord-link" href={DISCORD_URL} target="_blank" rel="noreferrer">Join Discord</a>
         </nav>

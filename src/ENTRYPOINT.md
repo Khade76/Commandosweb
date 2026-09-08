@@ -1,0 +1,1 @@
+Use `src/main.routed.jsx` for the routed React implementation. It imports `src/App.routed.jsx` and `src/styles-routed.css`.

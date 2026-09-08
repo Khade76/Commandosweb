@@ -273,7 +273,7 @@ em { font-style: normal; color: var(--gold); }
 }
 .company-card a { color: var(--gold); font-family: var(--head); text-transform: uppercase; font-weight: 800; letter-spacing: .08em; }
 .company-list { border-top: 1px solid var(--line); }
-.company-row { display: grid; grid-template-columns: 150px 1fr; gap: 48px; padding: 58px 0; border-bottom: 1px solid var(--line); }
+.company-row { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: center; gap: 48px; padding: 58px 0; border-bottom: 1px solid var(--line); }
 .row-number { font-size: 5.8rem; font-weight: 900; color: rgba(242, 184, 39, .25); line-height: .85; }
 .company-symbol {
   min-height: 320px;
@@ -417,6 +417,6 @@ em { font-style: normal; color: var(--gold); }
 /* Original company artwork, kept uncropped at every placement. */
 .company-card .company-topline { margin-bottom: 20px; }
 .company-card-logo { width: 180px; height: auto; object-fit: contain; margin: 0 auto 24px; }
-.company-list-logo { width: 150px; height: auto; object-fit: contain; }
+.company-list-logo { width: 240px; max-width: 100%; height: auto; object-fit: contain; justify-self: center; }
 .company-symbol img { width: min(320px, 85%); height: auto; object-fit: contain; }
 .company-symbol { padding: 24px; }

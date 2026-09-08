@@ -1,0 +1,1 @@
+The older anchor site has been superseded by the routed React implementation. Use the routed entrypoint files already committed in this repo.

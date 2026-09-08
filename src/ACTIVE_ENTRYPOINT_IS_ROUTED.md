@@ -1,1 +1,0 @@
-The routed version is in `src/main.routed.jsx` and `src/App.routed.jsx`.

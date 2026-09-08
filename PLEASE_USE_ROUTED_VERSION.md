@@ -1,1 +1,0 @@
-The routed site files are committed. Use the `.routed` entrypoint files to activate them, or replace the original `index.html`, `src/main.jsx`, `src/App.jsx`, and `server/index.js` with the routed versions.

@@ -46,7 +46,7 @@ export default function Home() {
       <section className="section split">
         <div>
           <p className="kicker">Who we are</p>
-          <h2>Built for WARDOGS.<br /><em>Built around teamwork.</em></h2>
+          <h2>Built for community.<br /><em>Forged in WARDOGS.</em></h2>
         </div>
         <div className="copy-panel">
           <p>The 44th brings structure and teamwork to WARDOGS without turning the game into a second job. Communicate clearly, play the objective and build a community people enjoy being part of.</p>

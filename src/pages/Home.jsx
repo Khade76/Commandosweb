@@ -50,7 +50,7 @@ export default function Home() {
           <h2>Built for community.<br /><em>Forged in WARDOGS.</em></h2>
         </div>
         <div className="copy-panel">
-          <p>The 44th brings structure and teamwork to WARDOGS without turning the game into a second job. Communicate clearly, play the objective and build a community people enjoy being part of.</p>
+          <p>The 44th brings structure and teamwork to WARDOGS without turning the game into a second job. Communicate clearly, play the objective and join us in continuing our awesome community culture.</p>
           <div className="inline-links"><Link to="/about">About →</Link><Link to="/companies">Companies →</Link><Link to="/servers">Our Servers →</Link></div>
         </div>
       </section>

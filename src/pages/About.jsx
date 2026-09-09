@@ -8,7 +8,7 @@ export default function About() {
         <div className="shell">
           <p className="kicker">About the 44th</p>
           <h1>Built for the chaos.<br /><em>Organised for the win.</em></h1>
-          <p className="hero-copy">A WARDOGS regiment centred on teamwork, communication, community and organised play.</p>
+          <p className="hero-copy">A WARDOGS regiment, the 44th way. Join an organisation built on a unified vision and culture.</p>
         </div>
       </section>
       <section className="section split">

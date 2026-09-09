@@ -420,3 +420,12 @@ em { font-style: normal; color: var(--gold); }
 .company-list-logo { width: 240px; max-width: 100%; height: auto; object-fit: contain; justify-self: center; }
 .company-symbol img { width: min(320px, 85%); height: auto; object-fit: contain; }
 .company-symbol { padding: 24px; }
+
+.community-games { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; justify-items: center; gap: 40px 32px; margin-top: 64px; }
+.community-games img { width: 100%; max-width: 220px; height: 120px; object-fit: contain; }
+.community-games .community-game-holdfast { max-width: 110px; }
+@media (max-width: 620px) {
+  .community-games { gap: 24px; margin-top: 40px; }
+  .community-games img { height: 90px; }
+  .community-games .community-game-holdfast { max-width: 80px; }
+}

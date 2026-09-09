@@ -12,7 +12,16 @@ export default function About() {
         </div>
       </section>
       <section className="section split">
-        <div><p className="kicker">Our Mission</p><h2>The standard<br /><em>behind the name.</em></h2></div>
+        <div>
+          <p className="kicker">Our Mission</p>
+          <h2>The standard<br /><em>behind the name.</em></h2>
+          <div className="community-games" role="group" aria-label="Games we play">
+            <img src="/assets/games/squad.png" alt="Squad" />
+            <img src="/assets/games/bellum.png" alt="Bellum" />
+            <img className="community-game-holdfast" src="/assets/games/holdfast.png" alt="Holdfast: Nations at War" />
+            <img src="/assets/games/arma3.png" alt="Arma 3" />
+          </div>
+        </div>
         <div className="copy-panel">
           <p>The 44th started on January 5th 2022 in a game called Holdfast: Nations at War. Ted had observed that at the time, there were too many who took the game far too seriously and exerted their power over others, and didn’t take the time to appreciate that actually, many just want to hop on and play with a friendly and low intensity community. Thus, the 44th was born.</p>
           <p>The 44th have been a no mandatory attendance, no skill requirements and no tolerance for discrimination of all backgrounds since day one. We're proud to say that’s now a part of our culture which thrives through people choosing the 44th and being enticed to play; not forced!</p>

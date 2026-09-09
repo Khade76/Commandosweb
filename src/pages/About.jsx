@@ -20,6 +20,7 @@ export default function About() {
             <img src="/assets/games/bellum.png" alt="Bellum" />
             <img className="community-game-holdfast" src="/assets/games/holdfast.png" alt="Holdfast: Nations at War" />
             <img src="/assets/games/arma3.png" alt="Arma 3" />
+            <img className="community-game-wardogs" src="/assets/games/wardogs.png" alt="WARDOGS" />
           </div>
         </div>
         <div className="copy-panel">

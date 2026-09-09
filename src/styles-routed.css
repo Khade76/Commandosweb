@@ -429,3 +429,8 @@ em { font-style: normal; color: var(--gold); }
   .community-games img { height: 90px; }
   .community-games .community-game-holdfast { max-width: 80px; }
 }
+
+.community-games .community-game-wardogs { grid-column: 1 / -1; width: 150px; height: auto; }
+@media (max-width: 620px) {
+  .community-games .community-game-wardogs { width: 120px; }
+}

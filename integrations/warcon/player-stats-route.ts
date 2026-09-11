@@ -26,8 +26,8 @@ function groupFrom(value: string | null): StatsGroup {
 function configuredServerRefs(group: StatsGroup): string[] {
 	const raw =
 		group === 'hardcore'
-			? privateEnv.PUBLIC_STATS_HARDCORE_SERVERS
-			: privateEnv.PUBLIC_STATS_NORMAL_SERVERS;
+			? privateEnv.WARDOGS_STATS_HARDCORE_SERVERS
+			: privateEnv.WARDOGS_STATS_NORMAL_SERVERS;
 	return (raw || '')
 		.split(',')
 		.map((value) => value.trim())
@@ -51,7 +51,7 @@ function stringArray(value: unknown): string[] {
 }
 
 export const GET = route(async (event) => {
-	const expected = (privateEnv.PUBLIC_STATS_API_KEY || '').trim();
+	const expected = (privateEnv.WARDOGS_STATS_API_KEY || '').trim();
 	if (expected.length < 20) throw new ApiError(503, 'Public stats API is not configured.');
 	if (!secretMatches(expected, bearerToken(event.request))) throw new ApiError(401, 'Unauthorized.');
 

@@ -2,23 +2,33 @@
 
 This integration makes WARCON the persistent source of truth for `/stats` on `44thwardogs.com`.
 
-## Why the small WARCON patch is included
+## Why the small WARCON session change is included
 
 Stock WARCON already stores player presence, names, factions, join/leave times, matches and live data in Postgres/TimescaleDB. Its existing API is intended for signed-in panel users, so this integration adds one API-key-protected, read-only endpoint for the public website.
 
-WARCON's stock `player_sessions.kills` / `deaths` values follow the live WARDOGS counters. Those counters reset when a match changes even if a player stays connected. `warcon-session-deltas.patch` changes the in-memory session tracking so the persisted values accumulate the counter deltas across match resets. No database migration is required.
+WARCON's stock `player_sessions.kills` / `deaths` values follow the live WARDOGS counters. Those counters reset when a match changes even if a player stays connected. `apply-session-deltas.py` adjusts WARCON's in-memory session tracking so the persisted values accumulate the counter deltas across match resets. No database migration is required.
 
-Existing completed WARCON sessions cannot reconstruct kills/deaths that were overwritten before this patch was installed. New observations are cumulative after the patch is deployed.
+The installer checks exact upstream source blocks before changing them and stops if the installed WARCON version is incompatible. Running it again is safe.
 
-## 1. Apply the WARCON session patch
+Existing completed WARCON sessions cannot reconstruct kills/deaths that were overwritten before this change was installed. New observations are cumulative after it is deployed.
+
+## 1. Apply cumulative session K/D tracking
 
 SSH to the WARCON VPS and change to the WARCON source checkout (the directory containing `docker-compose.yml`). Then run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrations/warcon/warcon-session-deltas.patch -o /tmp/44th-warcon-session-deltas.patch
-git apply --check /tmp/44th-warcon-session-deltas.patch
-git apply /tmp/44th-warcon-session-deltas.patch
+curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrations/warcon/apply-session-deltas.py \
+  -o /tmp/apply-session-deltas.py
+python3 /tmp/apply-session-deltas.py
 ```
+
+A successful run prints:
+
+```text
+[44th WARCON] Applied cumulative kill/death session tracking.
+```
+
+If WARCON upstream has changed in a way that makes the modification unsafe, the script exits without silently editing a different block.
 
 ## 2. Install the read-only stats route
 
@@ -69,7 +79,7 @@ The server lists may contain either WARCON server IDs or exact server names.
 
 ## 5. Rebuild WARCON
 
-The standard WARCON Docker Compose file builds from the local checkout, so rebuild the web/worker image after applying the patch:
+The standard WARCON Docker Compose file builds from the local checkout, so rebuild after installing the route/session change:
 
 ```bash
 docker compose up -d --build

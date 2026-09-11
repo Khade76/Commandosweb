@@ -24,8 +24,7 @@ jobs:
       - name: Apply WARCON integration
         working-directory: warcon
         run: |
-          git apply --check ../integration/integrations/warcon/warcon-session-deltas.patch
-          git apply ../integration/integrations/warcon/warcon-session-deltas.patch
+          python3 ../integration/integrations/warcon/apply-session-deltas.py
           mkdir -p src/routes/api/public/player-stats
           cp ../integration/integrations/warcon/player-stats-route.ts src/routes/api/public/player-stats/+server.ts
 

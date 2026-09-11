@@ -14,4 +14,4 @@ RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
-RewriteRule ^(?:about|companies(?:/[^/]+)?|servers|enlist|rules|wardogs|donate)/?$ index.html [L]
+RewriteRule ^(?:about|companies(?:/[^/]+)?|servers|stats|enlist|rules|wardogs|donate)/?$ index.html [L]

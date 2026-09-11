@@ -3,6 +3,10 @@
 Options -Indexes
 RewriteEngine On
 
+# Preserve Authorization for PHP endpoints such as /api/stats-source.php on
+# Apache/FastCGI hosts that do not expose it to PHP automatically.
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
 # Defense in depth: never serve a WARDOGS secret file if one is accidentally
 # uploaded into the public document root. The intended location is above /www.
 <Files "wardogs-secrets.php">

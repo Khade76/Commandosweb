@@ -70,26 +70,31 @@ Start the Node.js/Express server:
 npm start
 ```
 
-The production server uses `PORT` when supplied, otherwise port `3000`.
+The production server uses `PORT` when supplied, otherwise port `3000`. The backend automatically loads a local `.env` file when present.
 
 ### BisectHosting Starbase integration
 
-Copy `.env.example` to `.env` on the OVH backend and configure the following server-side secrets/settings:
+Copy `.env.example` to `.env` on the OVH backend and set the API key there. The two known Bisect server identifiers are already included in `.env.example`:
 
 ```env
 BISECT_API_KEY=your-starbase-api-key
 BISECT_PANEL_HOST=https://games.bisecthosting.com
-BISECT_SERVER_UUID=canonical-starbase-server-uuid
-WARDOGS_PUBLIC_SERVER_NAME=44th Commando Regiment — WARDOGS Main
+BISECT_SERVER_IDS=278c7bc5,9290beb1
 WARDOGS_SERVER_REGION=Europe / UK
 WARDOGS_MAX_PLAYERS=100
 ```
 
 `BISECT_API_KEY` must never be added to React/Vite variables or committed to GitHub. The browser calls the 44th Node backend, and only the backend talks to Starbase.
 
-The Starbase Client API requires the canonical server UUID in the `/api/client/servers/{uuid}` path. A Bisect billing/service number is not a substitute for the UUID.
+The backend accepts the short Starbase server identifiers shown in the panel. It refreshes live results at most once every 15 seconds. If Starbase is unavailable, the public endpoint returns a safe fallback rather than exposing API errors or secrets.
 
-The backend refreshes the live result at most once every 15 seconds. If Starbase is unavailable, the public endpoint returns a safe fallback rather than exposing API errors or secrets.
+To test the Bisect connection directly from OVH without exposing the API key, run:
+
+```bash
+npm run test:bisect
+```
+
+The diagnostic checks server details, resources, online players, and startup metadata for both configured servers. Sensitive fields such as passwords, tokens, credentials, and API keys are redacted from its output. The output is intended to reveal whether WARDOGS exposes map, mode, team, faction, or score fields that can be mapped into the public server cards.
 
 ### Apache static hosting
 

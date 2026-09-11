@@ -45,6 +45,21 @@ function factionScores(rows) {
   return scores
 }
 
+function experienceMode(experience) {
+  const value = String(experience || '').trim()
+  if (!value) return ''
+
+  // WARDOGS experience IDs currently look like Bakurani_KOTH_01.
+  // Use the middle mode token for the public card while retaining the raw IDs separately.
+  const match = value.match(/_([A-Za-z0-9]+)_\d+$/)
+  return match?.[1]?.toUpperCase() || value
+}
+
+function displayMode(experiences, fallback = 'WARDOGS') {
+  const modes = [...new Set(experiences.map(experienceMode).filter(Boolean))]
+  return modes.length ? modes.join(' + ') : fallback
+}
+
 export function getWardogsRconConfig(index = 0) {
   return {
     url: normaliseBaseUrl(envValue(index, 'URL')),
@@ -121,7 +136,7 @@ export async function getWardogsRconStatus(index = 0, base = {}) {
     playerCount: resolvedCurrent,
     maxPlayers: resolvedMax,
     map: status.map || base.map || '—',
-    mode: experiences.length ? experiences.join(' + ') : (base.mode || 'WARDOGS'),
+    mode: displayMode(experiences, base.mode || 'WARDOGS'),
     experiences,
     lighting: status.lighting || null,
     matchSeconds: finiteNumber(status.matchSeconds),

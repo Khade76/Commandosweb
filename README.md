@@ -8,6 +8,7 @@ React + Node.js website for the 44th Commando Regiment WARDOGS community.
 - Vite
 - Node.js 20+
 - Express
+- Discord.js
 - Local lightweight router aliased as `react-router-dom`
 
 ## Included
@@ -21,6 +22,7 @@ React + Node.js website for the 44th Commando Regiment WARDOGS community.
 - `/api/health` endpoint
 - `/api/servers` endpoint with BisectHosting infrastructure data and optional direct WARDOGS RCON match data
 - Live server state, players, map, mode, match timer and faction scores when RCON is configured
+- Two lightweight Discord presence bots for WARDOGS Server #1 and Server #2
 - Visible HTML loading fallback and React error boundary so the site should not silently black-screen
 
 ## Development
@@ -130,6 +132,43 @@ npm run test:rcon
 ```
 
 That command checks DNS/TCP, fingerprints the `/v1/status` endpoint, authenticates using the configured RCON password, then calls `/v1/status` and `/v1/capabilities`. It never prints the RCON passwords.
+
+### Discord server status bots
+
+The project can run two Discord bot accounts from one Node process. Each bot is bound to one WARDOGS server and updates its Discord presence every 30 seconds from the existing public `/api/servers` endpoint.
+
+Typical presence:
+
+```text
+Server #1 bot: Online • 99/100 players
+Server #2 bot: Online • 1/100 players
+```
+
+If a server is offline, the bot presence changes to red/DND and displays `Offline • 0/100 players`. If the live status cannot be loaded, the bot goes idle and shows `Status unavailable`.
+
+Create two applications in the Discord Developer Portal, add a Bot user to each application, invite both bots to the 44th Discord, and place their tokens only in the OVH `.env`:
+
+```env
+DISCORD_WARDOGS_SERVER_1_BOT_TOKEN=your-server-1-bot-token
+DISCORD_WARDOGS_SERVER_1_IDENTIFIER=278c7bc5
+
+DISCORD_WARDOGS_SERVER_2_BOT_TOKEN=your-server-2-bot-token
+DISCORD_WARDOGS_SERVER_2_IDENTIFIER=9290beb1
+
+# Optional. Defaults to http://127.0.0.1:$PORT/api/servers
+DISCORD_STATUS_API_URL=
+DISCORD_STATUS_REFRESH_MS=30000
+```
+
+No privileged Discord Gateway intents are required. The bot process only needs the standard Guilds intent and does not read messages.
+
+Start both bots with:
+
+```bash
+npm run start:bots
+```
+
+Run `npm start` and `npm run start:bots` as separate long-running processes on OVH (for example with systemd or PM2). Both bot accounts share one `/api/servers` request per refresh cycle, so they reuse the backend's existing RCON/Bisect cache and the bot process does not need to make its own RCON calls.
 
 ### Apache static hosting
 

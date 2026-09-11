@@ -61,8 +61,15 @@ async function rconRequest(index, path) {
   const { url, password } = getWardogsRconConfig(index)
   if (!url || !password) throw new Error(`WARDOGS RCON server ${index + 1} is not configured`)
 
-  if (!url.startsWith('https://') && !url.startsWith('http://127.0.0.1') && !url.startsWith('http://localhost')) {
-    throw new Error('Remote WARDOGS RCON must use HTTPS')
+  let parsed
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error(`WARDOGS RCON server ${index + 1} URL is invalid`)
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('WARDOGS RCON URL must use HTTP or HTTPS')
   }
 
   const controller = new AbortController()
@@ -82,7 +89,7 @@ async function rconRequest(index, path) {
     try { body = text ? JSON.parse(text) : null } catch { body = null }
 
     if (!response.ok) {
-      const message = body?.error?.message || body?.message || text.slice(0, 160) || response.statusText
+      const message = body?.error?.message || body?.message || body?.error || text.slice(0, 160) || response.statusText
       throw new Error(`WARDOGS RCON request failed (${response.status}): ${message}`)
     }
 

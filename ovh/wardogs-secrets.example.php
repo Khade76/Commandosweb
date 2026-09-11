@@ -26,5 +26,16 @@ return [
             'joinId' => '294832',
             'maxPlayers' => 100,
         ],
+        [
+            // Qonzer-hosted Hardcore server. The game address is known, but the
+            // WARDOGS HTTP RCON/API allocation still needs to be confirmed in qPanel.
+            'id' => 'wardogs-hardcore',
+            'name' => '44th Commandos #3 | Hardcore',
+            'url' => '',
+            'password' => '',
+            'maxPlayers' => 100,
+            'region' => 'Qonzer',
+            'address' => '216.144.249.76:7779',
+        ],
     ],
 ];

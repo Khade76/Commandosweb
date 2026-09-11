@@ -1,3 +1,4 @@
+import './env.js'
 import express from 'express'
 import { existsSync } from 'node:fs'
 import path from 'node:path'

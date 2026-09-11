@@ -76,9 +76,10 @@ The confirmed WARDOGS RCON endpoints are:
 ```text
 Server #1: http://165.217.136.52:9001
 Server #2: http://165.217.136.99:9006
+Server #3 Hardcore: configure the Qonzer HTTP RCON endpoint separately
 ```
 
-The RCON bearer tokens must remain server-side only.
+The Hardcore game address is `216.144.249.76:7779`, but the game port must not be assumed to be the HTTP RCON API port. The RCON bearer tokens must remain server-side only.
 
 ## Live server page
 
@@ -111,7 +112,16 @@ server/stats/
 
 It polls WARDOGS RCON `/v1/status` and `/v1/players`, persists observations to disk, and exposes a small HTTP API for the OVH PHP proxy.
 
-Start it on a VPS with:
+The stats page keeps the two rule sets separate:
+
+```text
+Normal   = Servers #1 + #2 combined
+Hardcore = Server #3 only
+```
+
+A Steam ID has one identity/alias history, but independent Normal and Hardcore totals for kills, deaths, K/D, matches and tracked time. Existing version-1 stats are automatically migrated into the Normal bucket when the updated collector first loads the file.
+
+Start the collector on a VPS with:
 
 ```bash
 npm run start:stats
@@ -124,21 +134,28 @@ WARDOGS_RCON_SERVER_1_URL=http://165.217.136.52:9001
 WARDOGS_RCON_SERVER_1_PASSWORD=
 WARDOGS_RCON_SERVER_2_URL=http://165.217.136.99:9006
 WARDOGS_RCON_SERVER_2_PASSWORD=
+WARDOGS_RCON_SERVER_3_URL=
+WARDOGS_RCON_SERVER_3_PASSWORD=
 
 WARDOGS_STATS_HOST=0.0.0.0
 WARDOGS_STATS_PORT=3100
 WARDOGS_STATS_POLL_MS=60000
 WARDOGS_STATS_FILE=./runtime/wardogs-player-stats.json
+WARDOGS_STATS_SERVER_COUNT=3
 WARDOGS_STATS_ALLOWED_ORIGIN=*
+
+WARDOGS_SERVER_1_STATS_GROUP=normal
+WARDOGS_SERVER_2_STATS_GROUP=normal
+WARDOGS_SERVER_3_STATS_GROUP=hardcore
 ```
 
 The stats service exposes:
 
 ```text
 GET /health
-GET /api/stats/summary
-GET /api/stats/players
-GET /api/stats/players/:id
+GET /api/stats/summary?group=normal|hardcore
+GET /api/stats/players?group=normal|hardcore
+GET /api/stats/players/:id?group=normal|hardcore
 ```
 
 Statistics begin accumulating when the collector is started. Kill/death totals are derived from successive live RCON player snapshots and match resets; they represent activity observed on the 44th servers rather than global WARDOGS lifetime statistics.
@@ -186,7 +203,7 @@ The Discord bots are intentionally maintained separately from this website repo:
 https://github.com/Khade76/44th-wardogs-discord-bots
 ```
 
-That repo contains the two Node.js bot accounts, Discord presence updates, `/status`, `.env` configuration and AMP Node.js App Runner instructions.
+That repo contains the three Node.js bot accounts, Discord presence updates, `/status`, `.env` configuration and AMP Node.js App Runner instructions.
 
 ## Routes
 

@@ -6,12 +6,24 @@ return [
     'region' => 'Europe / UK',
     'include_training_server' => true,
 
-    // VPS stats API used by /stats. Example: http://203.0.113.10:3100
-    'stats_api_url' => '',
+    // Player stats are collected directly by OVH PHP and stored in the remote MariaDB database.
+    'stats_poll_seconds' => 60,
 
-    // Long random token used only by /api/stats-source.php. The VPS sends this
-    // as a Bearer token when collecting live player data. Do not expose it publicly.
-    'stats_source_token' => 'CHANGE_ME_TO_A_LONG_RANDOM_TOKEN',
+    // Token used only to protect /api/collect-stats.php when called by a scheduled HTTP job.
+    // It is NOT a WARDOGS/RCON token.
+    'stats_collect_token' => 'CHANGE_ME_TO_A_LONG_RANDOM_TOKEN',
+
+    // Remote MariaDB used by the /stats page.
+    'database' => [
+        'host' => 'CHANGE_ME_DB_HOST',
+        'port' => 3306,
+        'name' => 'CHANGE_ME_DB_NAME',
+        'user' => 'CHANGE_ME_DB_USER',
+        'password' => 'CHANGE_ME_DB_PASSWORD',
+        'charset' => 'utf8mb4',
+        // Optional: set this only if your DB host requires a CA file for TLS.
+        'ssl_ca' => '',
+    ],
 
     'servers' => [
         [
@@ -33,8 +45,6 @@ return [
             'statsGroup' => 'normal',
         ],
         [
-            // Qonzer-hosted Hardcore server. Use the same working HTTP RCON
-            // URL/password already used by the production servers.php config.
             'id' => 'wardogs-hardcore',
             'name' => '44th Commandos #3 | Hardcore',
             'url' => 'CHANGE_ME_TO_SERVER_3_HTTP_RCON_URL',

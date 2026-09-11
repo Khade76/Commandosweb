@@ -6,6 +6,9 @@ return [
     'region' => 'Europe / UK',
     'include_training_server' => true,
 
+    // Optional VPS stats API used by /stats. Example: http://203.0.113.10:3100
+    'stats_api_url' => '',
+
     'servers' => [
         [
             'id' => 'wardogs-278c7bc5',

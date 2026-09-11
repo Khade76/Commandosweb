@@ -152,6 +152,16 @@ export async function getWardogsRconStatus(index = 0, base = {}) {
   }
 }
 
+export async function getWardogsRconPlayers(index = 0) {
+  const payload = await rconRequest(index, '/v1/players')
+
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.players)) return payload.players
+  if (Array.isArray(payload?.data)) return payload.data
+
+  return []
+}
+
 export async function testWardogsRcon(index = 0) {
   const [status, capabilities] = await Promise.all([
     rconRequest(index, '/v1/status'),

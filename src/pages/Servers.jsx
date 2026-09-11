@@ -1,11 +1,25 @@
 import { useEffect, useState } from 'react'
 import { DISCORD_URL, STEAM_LAUNCH_URL, images, servers as fallbackServers } from '../data/site.js'
+import './servers-extra.css'
 
 const SERVERS_API_URL = import.meta.env.VITE_SERVERS_API_URL
   || (import.meta.env.PROD ? '/api/servers.php' : '/api/servers')
 
+const FACTIONS = [
+  { key: 'valkyra', label: 'Valkyra', icon: '/assets/factions/valkyra.png' },
+  { key: 'lonestar', label: 'Lonestar', icon: '/assets/factions/lonestar.png' },
+  { key: 'manticore', label: 'Manticore', icon: '/assets/factions/manticore.png' },
+]
+
 function formatScore(score) {
   return Number.isFinite(score) ? score : '—'
+}
+
+function statusTone(status) {
+  const value = String(status || '').trim().toLowerCase()
+  if (value.startsWith('online') || value === 'running') return 'online'
+  if (['starting', 'booting', 'installing', 'restarting'].includes(value)) return 'starting'
+  return 'offline'
 }
 
 function copyText(value) {
@@ -74,35 +88,50 @@ export default function Servers() {
         <h2>Find the 44th.<br /><em>Join the fight.</em></h2>
         <p className="section-copy">The server directory is connected to the 44th backend and displays live information supplied directly by WARDOGS RCON.</p>
         <div className="server-grid">
-          {servers.map((server) => (
-            <article className="server-card" key={server.id || server.name}>
-              <div className="server-top"><span>{server.status}</span><small>{server.region}</small></div>
-              <h3>{server.name}</h3>
-              <div className="server-stats">
-                <div><span>Players</span><strong>{server.players}</strong></div>
-                <div><span>Map</span><strong>{server.map}</strong></div>
-                <div><span>Mode</span><strong>{server.mode}</strong></div>
-              </div>
-              {server.joinId && (
-                <div className="actions server-actions">
-                  <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(server.joinId)}>Join Server</a>
-                  <button className="button" type="button" onClick={() => copyJoinId(server.joinId)}>{copiedJoinId === String(server.joinId) ? 'Copied' : 'Copy Join ID'}</button>
+          {servers.map((server) => {
+            const tone = statusTone(server.status)
+            return (
+              <article className="server-card" key={server.id || server.name}>
+                <div className="server-top">
+                  <span className={`server-status server-status-${tone}`}>
+                    <i className="server-status-dot" aria-hidden="true" />
+                    {server.status}
+                  </span>
+                  <small>{server.region}</small>
                 </div>
-              )}
-              {server.scores && (
-                <>
-                  <small>Current faction score</small>
-                  <div className="server-stats">
-                    <div><span>Valkyra</span><strong>{formatScore(server.scores.valkyra)}</strong></div>
-                    <div><span>Lonestar</span><strong>{formatScore(server.scores.lonestar)}</strong></div>
-                    <div><span>Manticore</span><strong>{formatScore(server.scores.manticore)}</strong></div>
+                <h3>{server.name}</h3>
+                <div className="server-stats">
+                  <div><span>Players</span><strong>{server.players}</strong></div>
+                  <div><span>Map</span><strong>{server.map}</strong></div>
+                  <div><span>Mode</span><strong>{server.mode}</strong></div>
+                </div>
+                {server.joinId && (
+                  <div className="actions server-actions">
+                    <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(server.joinId)}>Join Server</a>
+                    <button className="button" type="button" onClick={() => copyJoinId(server.joinId)}>{copiedJoinId === String(server.joinId) ? 'Copied' : 'Copy Join ID'}</button>
                   </div>
-                </>
-              )}
-              {server.address && <p>{server.address}</p>}
-              <small>{server.notes}</small>
-            </article>
-          ))}
+                )}
+                {server.scores && (
+                  <>
+                    <small>Current faction score</small>
+                    <div className="faction-score-list">
+                      {FACTIONS.map((faction) => (
+                        <div className={`faction-score faction-${faction.key}`} key={faction.key}>
+                          <div className="faction-label">
+                            <img src={faction.icon} alt="" aria-hidden="true" />
+                            <span>{faction.label}</span>
+                          </div>
+                          <strong>{formatScore(server.scores[faction.key])}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {server.address && <p>{server.address}</p>}
+                <small>{server.notes}</small>
+              </article>
+            )
+          })}
         </div>
       </section>
       <section className="section cards-three">

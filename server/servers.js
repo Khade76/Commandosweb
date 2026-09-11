@@ -1,4 +1,7 @@
 import { bisectConfigured, getBisectServerIdentifiers, getBisectWardogsServer, getWardogsJoinId } from './providers/bisect.js'
+import { getWardogsRconStatus, wardogsRconConfigured } from './providers/wardogs-rcon.js'
+
+const DEFAULT_SERVER_IDENTIFIERS = ['278c7bc5', '9290beb1']
 
 function fallbackWardogsServer(identifier, index, overrides = {}) {
   return {
@@ -19,11 +22,9 @@ function fallbackWardogsServer(identifier, index, overrides = {}) {
       manticore: null,
     },
     scoreAvailable: false,
-    provider: 'BisectHosting',
+    provider: null,
     address: process.env[`WARDOGS_SERVER_${index + 1}_JOIN_INFO`] || '',
-    notes: identifier
-      ? 'Live server data is temporarily unavailable. The website will retry automatically.'
-      : 'Configure the Bisect API key and server identifier on OVH to enable live status.',
+    notes: 'Live server data is temporarily unavailable. The website will retry automatically.',
     ...overrides,
   }
 }
@@ -46,23 +47,52 @@ const cache = new Map()
 const CACHE_MS = 15_000
 
 async function getWardogsServer(identifier, index) {
-  const cached = cache.get(identifier)
+  const cacheKey = identifier || `server-${index + 1}`
+  const cached = cache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) return cached.value
 
-  try {
-    const value = await getBisectWardogsServer(identifier, index)
-    cache.set(identifier, { value, expiresAt: Date.now() + CACHE_MS })
-    return value
-  } catch (error) {
-    console.error(`Unable to refresh Bisect WARDOGS server ${identifier}:`, error.message)
-    return fallbackWardogsServer(identifier, index, cached?.value || {})
+  let value = fallbackWardogsServer(identifier, index)
+
+  if (bisectConfigured() && identifier) {
+    try {
+      value = await getBisectWardogsServer(identifier, index)
+    } catch (error) {
+      console.error(`Unable to refresh Bisect WARDOGS server ${identifier}:`, error.message)
+      value = cached?.value || value
+    }
   }
+
+  if (wardogsRconConfigured(index)) {
+    try {
+      value = await getWardogsRconStatus(index, value)
+    } catch (error) {
+      console.error(`Unable to refresh WARDOGS RCON server ${index + 1}:`, error.message)
+    }
+  }
+
+  cache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_MS })
+  return value
+}
+
+function configuredServerIdentifiers() {
+  const bisectIdentifiers = getBisectServerIdentifiers()
+  if (bisectIdentifiers.length) return bisectIdentifiers
+
+  return DEFAULT_SERVER_IDENTIFIERS.filter((_identifier, index) => wardogsRconConfigured(index))
 }
 
 export async function getServers() {
-  if (!bisectConfigured()) return [fallbackWardogsServer(null, 0), trainingServer]
+  const identifiers = configuredServerIdentifiers()
 
-  const identifiers = getBisectServerIdentifiers()
+  if (!identifiers.length) {
+    return [
+      fallbackWardogsServer(null, 0, {
+        notes: 'Configure Bisect or WARDOGS RCON on OVH to enable live status.',
+      }),
+      trainingServer,
+    ]
+  }
+
   const liveServers = await Promise.all(
     identifiers.map((identifier, index) => getWardogsServer(identifier, index)),
   )

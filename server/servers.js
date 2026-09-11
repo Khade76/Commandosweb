@@ -1,24 +1,30 @@
-import { bisectConfigured, getBisectWardogsServer } from './providers/bisect.js'
+import { bisectConfigured, getBisectServerIdentifiers, getBisectWardogsServer } from './providers/bisect.js'
 
-const fallbackWardogsServer = {
-  id: 'wardogs-main',
-  name: '44th Commando Regiment — WARDOGS Main',
-  status: 'Configuration Required',
-  region: 'Europe / UK',
-  players: '— / 100',
-  playerCount: null,
-  maxPlayers: 100,
-  map: '—',
-  mode: 'WARDOGS',
-  scores: {
-    valkyra: null,
-    lonestar: null,
-    manticore: null,
-  },
-  scoreAvailable: false,
-  provider: 'BisectHosting',
-  address: '',
-  notes: 'Live status will appear after the Bisect API key and canonical server UUID are configured on OVH.',
+function fallbackWardogsServer(identifier, index, overrides = {}) {
+  return {
+    id: identifier ? `wardogs-${identifier}` : `wardogs-${index + 1}`,
+    identifier: identifier || null,
+    name: process.env[`WARDOGS_SERVER_${index + 1}_NAME`] || `44th Commando Regiment — WARDOGS #${index + 1}`,
+    status: identifier ? 'Unavailable' : 'Configuration Required',
+    region: process.env[`WARDOGS_SERVER_${index + 1}_REGION`] || process.env.WARDOGS_SERVER_REGION || 'Europe / UK',
+    players: `— / ${process.env[`WARDOGS_SERVER_${index + 1}_MAX_PLAYERS`] || process.env.WARDOGS_MAX_PLAYERS || 100}`,
+    playerCount: null,
+    maxPlayers: Number(process.env[`WARDOGS_SERVER_${index + 1}_MAX_PLAYERS`] || process.env.WARDOGS_MAX_PLAYERS || 100),
+    map: '—',
+    mode: 'WARDOGS',
+    scores: {
+      valkyra: null,
+      lonestar: null,
+      manticore: null,
+    },
+    scoreAvailable: false,
+    provider: 'BisectHosting',
+    address: process.env[`WARDOGS_SERVER_${index + 1}_JOIN_INFO`] || '',
+    notes: identifier
+      ? 'Live server data is temporarily unavailable. The website will retry automatically.'
+      : 'Configure the Bisect API key and server identifier on OVH to enable live status.',
+    ...overrides,
+  }
 }
 
 const trainingServer = {
@@ -35,30 +41,30 @@ const trainingServer = {
   notes: 'Can later show event passwords, whitelisting and restart notices.',
 }
 
-let cache = null
-let cacheExpiresAt = 0
+const cache = new Map()
 const CACHE_MS = 15_000
 
-async function getWardogsServer() {
-  if (!bisectConfigured()) return fallbackWardogsServer
-
-  if (cache && Date.now() < cacheExpiresAt) return cache
+async function getWardogsServer(identifier, index) {
+  const cached = cache.get(identifier)
+  if (cached && Date.now() < cached.expiresAt) return cached.value
 
   try {
-    cache = await getBisectWardogsServer()
-    cacheExpiresAt = Date.now() + CACHE_MS
-    return cache
+    const value = await getBisectWardogsServer(identifier, index)
+    cache.set(identifier, { value, expiresAt: Date.now() + CACHE_MS })
+    return value
   } catch (error) {
-    console.error('Unable to refresh Bisect WARDOGS server status:', error.message)
-    return {
-      ...fallbackWardogsServer,
-      status: cache?.status || 'Unavailable',
-      notes: 'Live server data is temporarily unavailable. The website will retry automatically.',
-      ...(cache || {}),
-    }
+    console.error(`Unable to refresh Bisect WARDOGS server ${identifier}:`, error.message)
+    return fallbackWardogsServer(identifier, index, cached?.value || {})
   }
 }
 
 export async function getServers() {
-  return [await getWardogsServer(), trainingServer]
+  if (!bisectConfigured()) return [fallbackWardogsServer(null, 0), trainingServer]
+
+  const identifiers = getBisectServerIdentifiers()
+  const liveServers = await Promise.all(
+    identifiers.map((identifier, index) => getWardogsServer(identifier, index)),
+  )
+
+  return [...liveServers, trainingServer]
 }

@@ -1,0 +1,94 @@
+diff --git a/src/lib/server/sessions.ts b/src/lib/server/sessions.ts
+--- a/src/lib/server/sessions.ts
++++ b/src/lib/server/sessions.ts
+@@
+ export interface OpenSession {
+ 	id: number;
+ 	steamId: string;
+ 	name: string;
+ 	faction: string | null;
++	/** Cumulative kills/deaths for this connection session. */
+ 	kills: number;
+ 	deaths: number;
++	/** Last raw game counters seen. Undefined after a WARCON restart until the first observation. */
++	rawKills?: number;
++	rawDeaths?: number;
+ 	cash: number;
+ 	joinedAt: number;
+ 	lastSeen: number;
+@@
+ export const newPresence = (): Presence => ({ loaded: false, open: new Map(), heartbeatAt: 0 });
++
++/**
++ * Advances an open session from the current game counters. WARDOGS resets kills/deaths when a
++ * match changes; keeping the raw counter separately lets the session retain the deltas from every
++ * match the player stayed connected for. After a WARCON process restart rawKills/rawDeaths are
++ * unknown, so the first observation only establishes a baseline and avoids double counting.
++ */
++export function updateOpenSession(session: OpenSession, player: Player, now: number): void {
++	session.name = player.name;
++	session.faction = player.faction;
++	if (session.rawKills === undefined) session.rawKills = player.kills;
++	else {
++		session.kills += player.kills >= session.rawKills ? player.kills - session.rawKills : player.kills;
++		session.rawKills = player.kills;
++	}
++	if (session.rawDeaths === undefined) session.rawDeaths = player.deaths;
++	else {
++		session.deaths +=
++			player.deaths >= session.rawDeaths ? player.deaths - session.rawDeaths : player.deaths;
++		session.rawDeaths = player.deaths;
++	}
++	session.cash = player.cash;
++	session.lastSeen = now;
++}
+@@
+ 		for (const p of diff.joined)
+ 			presence.open.set(p.steamId, {
+ 				id: idOf.get(p.steamId)!,
+ 				steamId: p.steamId,
+ 				name: p.name,
+ 				faction: p.faction,
+ 				kills: p.kills,
+ 				deaths: p.deaths,
++				rawKills: p.kills,
++				rawDeaths: p.deaths,
+ 				cash: p.cash,
+ 				joinedAt: now,
+ 				lastSeen: now,
+ 				writtenAt: now
+ 			});
+ 	}
+-
+-	for (const { player: p, session: s } of diff.stayed) {
+-		s.name = p.name;
+-		s.faction = p.faction;
+-		s.kills = p.kills;
+-		s.deaths = p.deaths;
+-		s.cash = p.cash;
+-		s.lastSeen = now;
+-	}
+ 	if (heartbeatDue && diff.stayed.length) {
+ 		await db.execute(sql`
+diff --git a/src/lib/server/observe.ts b/src/lib/server/observe.ts
+--- a/src/lib/server/observe.ts
++++ b/src/lib/server/observe.ts
+@@
+ 	loadPresence,
+ 	newPresence,
+ 	persistPresence,
++	updateOpenSession,
+ 	type Presence,
+ 	type PresenceDiff
+ } from './sessions';
+@@
+ 	// Memory follows every player observation; the database only when something is due.
+ 	for (const { player: p, session: s } of diff.stayed) {
+-		s.name = p.name;
+-		s.faction = p.faction;
+-		s.kills = p.kills;
+-		s.deaths = p.deaths;
+-		s.cash = p.cash;
+-		s.lastSeen = started;
++		updateOpenSession(s, p, started);
+ 	}

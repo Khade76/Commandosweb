@@ -1,6 +1,7 @@
 export const DISCORD_URL = 'https://discord.gg/44thwardogs'
 export const DONATE_URL = 'https://ko-fi.com/44thwardogs'
 export const STEAM_URL = 'https://store.steampowered.com/app/1867240/WARDOGS/'
+export const STEAM_LAUNCH_URL = 'steam://run/1867240'
 
 export const images = {
   mark: '/assets/44TH_CMM_Simple_DS_v4.png',
@@ -48,13 +49,31 @@ export const companies = [
 
 export const servers = [
   {
-    id: 'wardogs-main',
-    name: '44th Commando Regiment — WARDOGS Main',
+    id: 'wardogs-278c7bc5',
+    name: '44th Commando Regiment — WARDOGS #1',
     status: 'Loading',
     region: 'Europe / UK',
     players: '— / 100',
     map: '—',
     mode: 'WARDOGS',
+    joinId: '175590',
+    scores: {
+      valkyra: null,
+      lonestar: null,
+      manticore: null,
+    },
+    address: '',
+    notes: 'Connecting to live server status…',
+  },
+  {
+    id: 'wardogs-9290beb1',
+    name: '44th Commando Regiment — WARDOGS #2',
+    status: 'Loading',
+    region: 'Europe / UK',
+    players: '— / 100',
+    map: '—',
+    mode: 'WARDOGS',
+    joinId: '294832',
     scores: {
       valkyra: null,
       lonestar: null,

@@ -1,12 +1,28 @@
 import { useEffect, useState } from 'react'
-import { DISCORD_URL, images, servers as fallbackServers } from '../data/site.js'
+import { DISCORD_URL, STEAM_LAUNCH_URL, images, servers as fallbackServers } from '../data/site.js'
 
 function formatScore(score) {
   return Number.isFinite(score) ? score : '—'
 }
 
+function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
+
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  textarea.remove()
+  return Promise.resolve()
+}
+
 export default function Servers() {
   const [servers, setServers] = useState(fallbackServers)
+  const [copiedJoinId, setCopiedJoinId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -18,6 +34,16 @@ export default function Servers() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  function copyJoinId(joinId) {
+    if (!joinId) return
+    copyText(String(joinId))
+      .then(() => {
+        setCopiedJoinId(String(joinId))
+        window.setTimeout(() => setCopiedJoinId((current) => current === String(joinId) ? null : current), 2500)
+      })
+      .catch(() => {})
+  }
 
   return (
     <>
@@ -44,6 +70,19 @@ export default function Servers() {
                 <div><span>Map</span><strong>{server.map}</strong></div>
                 <div><span>Mode</span><strong>{server.mode}</strong></div>
               </div>
+              {server.joinId && (
+                <div className="server-join">
+                  <div>
+                    <span>WARDOGS Join ID</span>
+                    <strong>{server.joinId}</strong>
+                    <small>{copiedJoinId === String(server.joinId) ? 'Copied to clipboard' : 'Use this ID in the WARDOGS server browser.'}</small>
+                  </div>
+                  <div className="actions server-actions">
+                    <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(server.joinId)}>Join Server</a>
+                    <button className="button" type="button" onClick={() => copyJoinId(server.joinId)}>Copy Join ID</button>
+                  </div>
+                </div>
+              )}
               {server.scores && (
                 <>
                   <small>Current faction score</small>
@@ -61,7 +100,7 @@ export default function Servers() {
         </div>
       </section>
       <section className="section cards-three">
-        <article><span>LIVE</span><h3>Server status</h3><p>Online state and player population are supplied through the secure server-side integration.</p></article>
+        <article><span>JOIN</span><h3>Join IDs</h3><p>Each public server shows its WARDOGS Join ID. The Join Server button copies it and launches WARDOGS through Steam.</p></article>
         <article><span>MATCH</span><h3>Map & scores</h3><p>Current map and Valkyra, Lonestar and Manticore scores appear when the game/server interface exposes them.</p></article>
         <article><span>OPS</span><h3>Built to expand</h3><p>The backend is structured so WARDOGS RCON and additional hosts can be added without rebuilding this page.</p></article>
       </section>

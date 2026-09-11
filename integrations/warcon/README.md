@@ -70,10 +70,12 @@ $bytes = New-Object byte[] 32
 Add the following to WARCON's `.env`:
 
 ```env
-PUBLIC_STATS_API_KEY=PASTE_THE_RANDOM_TOKEN
-PUBLIC_STATS_NORMAL_SERVERS=SERVER_1_ID,SERVER_2_ID
-PUBLIC_STATS_HARDCORE_SERVERS=SERVER_3_ID
+WARDOGS_STATS_API_KEY=PASTE_THE_RANDOM_TOKEN
+WARDOGS_STATS_NORMAL_SERVERS=SERVER_1_ID,SERVER_2_ID
+WARDOGS_STATS_HARDCORE_SERVERS=SERVER_3_ID
 ```
+
+Do not prefix the private stats values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for values that may be exposed to client-side code, while this API key must remain server-only.
 
 The server lists may contain either WARCON server IDs or exact server names.
 
@@ -130,12 +132,12 @@ In the private `wardogs-secrets.php` above `/www`, add/update:
 'stats_source' => 'warcon',
 
 'warcon' => [
-    'url' => 'http://YOUR-WARCON-HOST:3000',
+    'url' => 'https://warcon.44thwardogs.com',
     'stats_api_key' => 'THE_SAME_RANDOM_TOKEN',
 ],
 ```
 
-Use a WARCON URL that the OVH web host can reach. If port 3000 is not intentionally public, expose WARCON through its existing HTTPS/reverse-proxy hostname instead and put that origin in `url`.
+Use a WARCON URL that the OVH web host can reach. If port 3000 is not intentionally public, use the existing HTTPS/reverse-proxy hostname.
 
 The browser never receives the WARCON API key. `/api/player-stats.php` on OVH adds it server-side.
 

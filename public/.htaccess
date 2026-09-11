@@ -1,6 +1,13 @@
 # Apache static hosting: serve the React entry point for website page routes.
 # Upload this hidden file alongside index.html and assets/ from dist/.
+Options -Indexes
 RewriteEngine On
+
+# Defense in depth: never serve a WARDOGS secret file if one is accidentally
+# uploaded into the public document root. The intended location is above /www.
+<Files "wardogs-secrets.php">
+  Require all denied
+</Files>
 
 # Leave real assets, directories and server endpoints alone.
 RewriteCond %{REQUEST_FILENAME} -f [OR]

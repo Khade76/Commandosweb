@@ -22,6 +22,13 @@ function statusTone(status) {
   return 'offline'
 }
 
+function mergeServerDirectory(liveServers) {
+  const live = Array.isArray(liveServers) ? liveServers : []
+  const liveIds = new Set(live.map((server) => server?.id).filter(Boolean))
+  const missingFallbacks = fallbackServers.filter((server) => !server?.id || !liveIds.has(server.id))
+  return [...live, ...missingFallbacks]
+}
+
 function copyText(value) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
 
@@ -48,7 +55,7 @@ export default function Servers() {
       fetch(SERVERS_API_URL, { cache: 'no-store' })
         .then((response) => response.ok ? response.json() : null)
         .then((data) => {
-          if (!cancelled && Array.isArray(data?.servers)) setServers(data.servers)
+          if (!cancelled && Array.isArray(data?.servers)) setServers(mergeServerDirectory(data.servers))
         })
         .catch(() => {})
     }

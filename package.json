@@ -10,14 +10,12 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "start": "node server/index.js",
-    "start:stats": "node server/stats/index.js",
     "test:bisect": "node scripts/test-bisect.mjs",
     "test:rcon": "node scripts/test-rcon.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "express": "^5.1.0",
-    "mysql2": "^3.24.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

@@ -7,6 +7,7 @@ import tls from 'node:tls'
 import { testWardogsRcon, wardogsRconConfigured, getWardogsRconConfig } from '../server/providers/wardogs-rcon.js'
 
 const TIMEOUT_MS = 6000
+const FAKE_BEARER = 'wardogs-diagnostic-invalid-token'
 
 function formatError(error) {
   if (!error) return 'Unknown error'
@@ -135,33 +136,95 @@ async function testTls(hostname, port) {
   return false
 }
 
-async function probePlainHttp(hostname, port) {
+function selectedHeaders(headers = {}) {
+  const names = ['server', 'www-authenticate', 'content-type', 'content-length', 'connection', 'date', 'allow']
+  const result = {}
+  for (const name of names) {
+    if (headers[name] !== undefined) result[name] = headers[name]
+  }
+  return result
+}
+
+function parseBody(body) {
+  if (!body) return { parsed: null, display: '(empty body)' }
+  try {
+    const parsed = JSON.parse(body)
+    return { parsed, display: JSON.stringify(parsed, null, 2) }
+  } catch {
+    return { parsed: null, display: body.slice(0, 1500) }
+  }
+}
+
+function looksLikeWardogsRcon(statusCode, parsed, headers = {}) {
+  const text = JSON.stringify(parsed || {}).toLowerCase()
+  const contentType = String(headers['content-type'] || '').toLowerCase()
+  return (
+    statusCode === 401 &&
+    (contentType.includes('json') || text.includes('unauthor') || text.includes('bearer') || text.includes('error'))
+  )
+}
+
+async function plainHttpRequest(hostname, port, { fakeBearer = false } = {}) {
   return new Promise((resolve) => {
+    const headers = { Accept: 'application/json' }
+    if (fakeBearer) headers.Authorization = `Bearer ${FAKE_BEARER}`
+
     const request = http.request({
       host: hostname,
       port,
       path: '/v1/status',
       method: 'GET',
       timeout: TIMEOUT_MS,
-      headers: { Accept: 'application/json' },
+      headers,
     }, (response) => {
-      response.resume()
-      console.log(`Plain HTTP unauthenticated probe: responded HTTP ${response.statusCode}`)
-      console.log('WARNING: if this is the WARDOGS RCON service, do not send the RCON password over plaintext HTTP.')
-      resolve(true)
+      let body = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk) => { if (body.length < 5000) body += chunk })
+      response.on('end', () => {
+        const bodyInfo = parseBody(body)
+        const label = fakeBearer ? 'Plain HTTP fake-token probe' : 'Plain HTTP unauthenticated probe'
+        console.log(`${label}: HTTP ${response.statusCode}`)
+        console.log(`${label} headers:`, JSON.stringify(selectedHeaders(response.headers), null, 2))
+        console.log(`${label} body:\n${bodyInfo.display}`)
+        resolve({
+          ok: true,
+          statusCode: response.statusCode,
+          headers: response.headers,
+          parsed: bodyInfo.parsed,
+          looksLikeRcon: looksLikeWardogsRcon(response.statusCode, bodyInfo.parsed, response.headers),
+        })
+      })
     })
 
     request.once('timeout', () => {
       request.destroy()
-      console.log(`Plain HTTP unauthenticated probe: timeout after ${TIMEOUT_MS}ms`)
-      resolve(false)
+      console.log(`Plain HTTP ${fakeBearer ? 'fake-token' : 'unauthenticated'} probe: timeout after ${TIMEOUT_MS}ms`)
+      resolve({ ok: false })
     })
     request.once('error', (error) => {
-      console.log(`Plain HTTP unauthenticated probe: no useful response -> ${formatError(error)}`)
-      resolve(false)
+      console.log(`Plain HTTP ${fakeBearer ? 'fake-token' : 'unauthenticated'} probe: no useful response -> ${formatError(error)}`)
+      resolve({ ok: false })
     })
     request.end()
   })
+}
+
+async function probePlainHttp(hostname, port) {
+  const unauth = await plainHttpRequest(hostname, port)
+  if (!unauth.ok) return unauth
+
+  // This uses a deliberately invalid token, never the real RCON password.
+  const fake = await plainHttpRequest(hostname, port, { fakeBearer: true })
+
+  const likelyRcon = Boolean(unauth.looksLikeRcon || fake.looksLikeRcon)
+  if (likelyRcon) {
+    console.log('Service fingerprint: LIKELY WARDOGS RCON-compatible auth endpoint (/v1/status returns JSON-style 401).')
+  } else {
+    console.log('Service fingerprint: inconclusive. The HTTP service did not expose a distinctive WARDOGS-style auth response.')
+  }
+
+  console.log('SECURITY: the real RCON password was NOT sent over plaintext HTTP.')
+  return { ok: true, likelyRcon, unauth, fake }
 }
 
 async function authenticatedStatusRequest(url, password) {
@@ -237,15 +300,19 @@ for (let index = 0; index < 2; index += 1) {
   }
 
   if (parsed.protocol !== 'https:') {
-    console.log('Diagnosis: remote WARDOGS RCON should use HTTPS. The community reference says network-bound listeners require TLS.')
+    console.log('Diagnosis: remote WARDOGS RCON should use HTTPS according to the community reference. Running safe plaintext fingerprint probes only.')
     await probePlainHttp(hostname, port)
     continue
   }
 
   const tlsOk = await testTls(hostname, port)
   if (!tlsOk) {
-    await probePlainHttp(hostname, port)
-    console.log('Diagnosis: TCP is reachable but a trusted TLS connection could not be established. Review the certificate output above; common causes are a self-signed certificate, hostname/IP mismatch, or the port speaking plaintext/non-TLS.')
+    const probe = await probePlainHttp(hostname, port)
+    if (probe?.likelyRcon) {
+      console.log('Diagnosis: this endpoint strongly resembles WARDOGS RCON, but it is exposed as PLAINTEXT HTTP rather than TLS. This differs from the community reference and should be raised with the host before sending the full-access bearer password remotely.')
+    } else {
+      console.log('Diagnosis: TCP is reachable but TLS is unavailable and the plaintext service fingerprint is inconclusive.')
+    }
     continue
   }
 

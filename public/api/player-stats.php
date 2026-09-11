@@ -42,11 +42,11 @@ try {
         'offset' => $offset,
     ]);
 
-    echo json_encode([
-        ...$result,
+    $payload = array_merge($result, [
         'summary' => wardogsStatsSummary($pdo, $group),
         'generatedAt' => gmdate('c'),
-    ], JSON_UNESCAPED_SLASHES);
+    ]);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
 } catch (Throwable $error) {
     error_log('44th player stats failed: ' . $error->getMessage());
     http_response_code(503);

@@ -27,9 +27,19 @@ function wardogsCollectRequestToken(): string
     return isset($_GET['token']) ? trim((string)$_GET['token']) : '';
 }
 
+function wardogsExpectedCollectToken(array $config): string
+{
+    $token = trim((string)($config['stats_collect_token'] ?? ''));
+    if ($token !== '') return $token;
+
+    // Backward compatibility with the earlier name used before stats collection
+    // was moved fully onto OVH.
+    return trim((string)($config['stats_source_token'] ?? ''));
+}
+
 try {
     $config = wardogsStatsConfig();
-    $expectedToken = trim((string)($config['stats_collect_token'] ?? ''));
+    $expectedToken = wardogsExpectedCollectToken($config);
     $providedToken = wardogsCollectRequestToken();
 
     if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToken, $providedToken)) {

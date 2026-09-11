@@ -1,3 +1,5 @@
+import '../server/env.js'
+
 const host = (process.env.BISECT_PANEL_HOST || 'https://games.bisecthosting.com').replace(/\/$/, '')
 const apiKey = process.env.BISECT_API_KEY
 const ids = (process.env.BISECT_SERVER_IDS || '278c7bc5,9290beb1')

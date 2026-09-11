@@ -21,7 +21,8 @@ function normalisePlayer(player) {
     ?? '',
   ).trim()
 
-  const name = String(player?.name ?? player?.playerName ?? steamId || 'Unknown Player').trim()
+  const rawName = player?.name ?? player?.playerName ?? steamId
+  const name = String(rawName || 'Unknown Player').trim()
 
   if (!steamId) return null
 

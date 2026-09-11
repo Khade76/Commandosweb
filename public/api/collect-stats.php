@@ -40,12 +40,8 @@ try {
 
     $pdo = wardogsStatsPdo($config);
     $result = wardogsStatsCollect($pdo, $config);
-
-    echo json_encode([
-        'ok' => true,
-        ...$result,
-        'generatedAt' => gmdate('c'),
-    ], JSON_UNESCAPED_SLASHES);
+    $payload = array_merge(['ok' => true], $result, ['generatedAt' => gmdate('c')]);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
 } catch (Throwable $error) {
     error_log('44th stats collector failed: ' . $error->getMessage());
     http_response_code(503);

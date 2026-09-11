@@ -2,7 +2,7 @@ import express from 'express'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { servers } from './servers.js'
+import { getServers } from './servers.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,8 +21,13 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.get('/api/servers', (_req, res) => {
-  res.json({ servers })
+app.get('/api/servers', async (_req, res) => {
+  try {
+    res.json({ servers: await getServers() })
+  } catch (error) {
+    console.error('Unable to load server directory:', error)
+    res.status(502).json({ error: 'Unable to load server status' })
+  }
 })
 
 if (existsSync(distPath)) {

@@ -1,9 +1,20 @@
 import '../env.js'
-import { ActivityType, Client, Events, GatewayIntentBits } from 'discord.js'
+import {
+  ActivityType,
+  Client,
+  EmbedBuilder,
+  Events,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+} from 'discord.js'
 
 const DEFAULT_REFRESH_MS = 30_000
 const MIN_REFRESH_MS = 15_000
 const REQUEST_TIMEOUT_MS = 8_000
+const STATUS_COMMAND = new SlashCommandBuilder()
+  .setName('status')
+  .setDescription('Show the current WARDOGS server status')
+  .toJSON()
 
 function env(name, fallback = '') {
   return String(process.env[name] ?? fallback).trim()
@@ -59,15 +70,23 @@ function presenceFor(server) {
   const players = current !== null && max !== null
     ? `${current}/${max} players`
     : String(server.players || 'players unavailable')
+  const status = String(server.status || '').toLowerCase()
 
-  if (String(server.status).toLowerCase() === 'online') {
+  if (status === 'online') {
     return {
       status: 'online',
       activity: `Online • ${players}`,
     }
   }
 
-  if (String(server.status).toLowerCase() === 'offline') {
+  if (['starting', 'booting', 'restarting'].includes(status)) {
+    return {
+      status: 'idle',
+      activity: `Starting • ${players}`,
+    }
+  }
+
+  if (['offline', 'unavailable', 'stopped'].includes(status)) {
     return {
       status: 'dnd',
       activity: `Offline • ${players}`,
@@ -78,6 +97,52 @@ function presenceFor(server) {
     status: 'idle',
     activity: `${server.status || 'Unavailable'} • ${players}`,
   }
+}
+
+function statusColour(server) {
+  const status = String(server?.status || '').toLowerCase()
+  if (status === 'online') return 0x22c55e
+  if (['starting', 'booting', 'restarting'].includes(status)) return 0xf59e0b
+  return 0xef4444
+}
+
+function scoreLine(server) {
+  const scores = server?.scores || {}
+  const format = (value) => Number.isFinite(value) ? value : '—'
+  return [
+    `🔴 **Valkyra:** ${format(scores.valkyra)}`,
+    `🔵 **Lonestar:** ${format(scores.lonestar)}`,
+    `🟢 **Manticore:** ${format(scores.manticore)}`,
+  ].join('\n')
+}
+
+function statusEmbed(server, definition) {
+  if (!server) {
+    return new EmbedBuilder()
+      .setColor(0xef4444)
+      .setTitle(`WARDOGS Server #${definition.number}`)
+      .setDescription('Server status is currently unavailable.')
+      .setTimestamp()
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(statusColour(server))
+    .setTitle(server.name || `WARDOGS Server #${definition.number}`)
+    .setDescription(`**${server.status || 'Unavailable'}**`)
+    .addFields(
+      { name: 'Players', value: String(server.players || '—'), inline: true },
+      { name: 'Map', value: String(server.map || '—'), inline: true },
+      { name: 'Mode', value: String(server.mode || '—'), inline: true },
+      { name: 'Faction Scores', value: scoreLine(server), inline: false },
+    )
+    .setFooter({ text: `44th Commando Regiment • WARDOGS Server #${definition.number}` })
+    .setTimestamp(server.updatedAt ? new Date(server.updatedAt) : new Date())
+
+  if (server.lighting) {
+    embed.addFields({ name: 'Lighting', value: String(server.lighting), inline: true })
+  }
+
+  return embed
 }
 
 async function loadServers() {
@@ -136,6 +201,40 @@ async function refreshPresences() {
   }
 }
 
+async function registerCommands(bot) {
+  const guildId = env('DISCORD_GUILD_ID')
+
+  if (guildId) {
+    const guild = await bot.client.guilds.fetch(guildId)
+    await guild.commands.set([STATUS_COMMAND])
+    console.log(`[Discord Server #${bot.number}] registered /status in guild ${guildId}`)
+    return
+  }
+
+  await bot.client.application.commands.set([STATUS_COMMAND])
+  console.log(`[Discord Server #${bot.number}] registered global /status command`)
+}
+
+async function handleStatusCommand(interaction, bot) {
+  await interaction.deferReply()
+
+  try {
+    const servers = await loadServers()
+    const server = findServer(servers, bot)
+    await interaction.editReply({ embeds: [statusEmbed(server, bot)] })
+  } catch (error) {
+    console.error(`[Discord Server #${bot.number}] /status failed:`, error.message)
+    await interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xef4444)
+          .setTitle(`WARDOGS Server #${bot.number}`)
+          .setDescription('Unable to load the current server status. Please try again shortly.'),
+      ],
+    })
+  }
+}
+
 if (!bots.length) {
   console.error('No Discord status bot tokens are configured.')
   console.error('Set DISCORD_WARDOGS_SERVER_1_BOT_TOKEN and/or DISCORD_WARDOGS_SERVER_2_BOT_TOKEN in .env.')
@@ -145,9 +244,23 @@ if (!bots.length) {
 console.log(`Discord status source: ${statusApiUrl()}`)
 
 for (const bot of bots) {
-  bot.client.once(Events.ClientReady, (readyClient) => {
+  bot.client.once(Events.ClientReady, async (readyClient) => {
     console.log(`[Discord Server #${bot.number}] logged in as ${readyClient.user.tag}`)
+
+    try {
+      await registerCommands(bot)
+    } catch (error) {
+      console.error(`[Discord Server #${bot.number}] slash command registration failed:`, error.message)
+    }
+
     refreshPresences().catch((error) => console.error('Initial Discord presence refresh failed:', error))
+  })
+
+  bot.client.on(Events.InteractionCreate, (interaction) => {
+    if (!interaction.isChatInputCommand() || interaction.commandName !== 'status') return
+    handleStatusCommand(interaction, bot).catch((error) => {
+      console.error(`[Discord Server #${bot.number}] interaction error:`, error)
+    })
   })
 
   bot.client.on(Events.Error, (error) => {

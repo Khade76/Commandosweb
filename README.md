@@ -4,7 +4,7 @@ React website for the 44th Commando Regiment WARDOGS community, with live WARDOG
 
 ## Repositories
 
-Website and player statistics:
+Website and WARCON integration files:
 
 ```text
 https://github.com/Khade76/Commandosweb
@@ -23,12 +23,13 @@ AMP is used only for the Discord bots. It is not part of the website/player-stat
 - React
 - Vite
 - PHP 8.x on OVH shared hosting
-- MariaDB on the external database host
+- WARCON + Postgres/TimescaleDB as the target player-stat source
+- MariaDB retained temporarily as a cutover fallback
 - Optional Node.js/Express backend for local development only
 
 ## Production OVH layout
 
-Keep the real `wardogs-secrets.php` one level above `/www` so RCON and database credentials are never web-accessible.
+Keep the real `wardogs-secrets.php` one level above `/www` so RCON and stats-source credentials are never web-accessible.
 
 ```text
 /
@@ -39,110 +40,95 @@ Keep the real `wardogs-secrets.php` one level above `/www` so RCON and database 
     ├── assets/
     └── api/
         ├── servers.php
-        ├── stats-db.php
-        ├── collect-stats.php
         └── player-stats.php
 ```
 
 Production configuration is stored in the private `wardogs-secrets.php`. `.env` is not used by the live OVH website.
 
-Example database section:
-
-```php
-'database' => [
-    'host' => 'DB_HOST',
-    'port' => 3306,
-    'name' => 'DB_NAME',
-    'user' => 'DB_USER',
-    'password' => 'DB_PASSWORD',
-    'charset' => 'utf8mb4',
-    'ssl_ca' => '',
-],
-
-'stats_poll_seconds' => 60,
-'stats_collect_token' => 'LONG_RANDOM_SECRET',
-```
-
-The same private file contains all three WARDOGS RCON connections. Each server should have a stats pool:
-
-```php
-'statsGroup' => 'normal',
-```
-
-or:
-
-```php
-'statsGroup' => 'hardcore',
-```
-
-Server #1 and #2 are `normal`; Server #3 is `hardcore`.
+The same private file contains all three WARDOGS RCON connections used by the live `/servers` page.
 
 ## Live server page
 
 `/servers` calls `/api/servers.php`, which reads the server connections directly from `wardogs-secrets.php`.
 
-## Player stats
+## Player stats — WARCON
 
-The stats architecture is entirely server-side on OVH plus the external MariaDB host:
-
-```text
-WARDOGS RCON Servers #1 / #2 / #3
-              ↓
-          OVH PHP
-              ↓
-       External MariaDB
-              ↓
-   /api/player-stats.php
-              ↓
-           /stats
-```
-
-There is no VPS/AMP/Node stats collector.
-
-The pools remain separate:
+WARCON is the target single source of truth for player search/statistics:
 
 ```text
-Normal   = Servers #1 + #2 combined
-Hardcore = Server #3 only
+WARDOGS #1 ─┐
+WARDOGS #2 ─┼──► WARCON ─► Postgres / TimescaleDB
+WARDOGS #3 ─┘                    │
+                                 │ read-only API key
+                                 ▼
+                              OVH PHP
+                                 │
+                                 ▼
+                    /api/player-stats.php
+                                 │
+                                 ▼
+                              /stats
 ```
 
-A Steam ID has one identity/alias history with independent Normal and Hardcore totals.
-
-### MariaDB schema
-
-Import:
+Normal and Hardcore remain separate:
 
 ```text
-database/schema.sql
+Normal   = WARCON Servers #1 + #2 combined
+Hardcore = WARCON Server #3 only
 ```
 
-The schema stores:
+WARCON already stores player sessions, names, factions, join/leave times, matches and online state. The 44th integration adds a read-only, API-key-protected endpoint for lifetime player search and combined server-group totals.
 
-- players and aliases
-- Normal/Hardcore totals
-- per-server totals
-- faction totals
-- latest snapshots used to calculate deltas
-- live/online state
-- tables reserved for future match history
-
-### Collection
-
-`/api/collect-stats.php` polls `/v1/status` and `/v1/players` for all configured WARDOGS servers and writes deltas directly to MariaDB.
-
-It is protected by `stats_collect_token`. A scheduled HTTP call can use:
+The integration is under:
 
 ```text
-Authorization: Bearer YOUR_TOKEN
+integrations/warcon/
 ```
 
-or, where a scheduler cannot set headers:
+See:
 
 ```text
-/api/collect-stats.php?token=YOUR_TOKEN
+integrations/warcon/README.md
 ```
 
-For reliable 24/7 statistics, schedule that endpoint at the same cadence as `stats_poll_seconds` (normally 60 seconds). `/api/player-stats.php` also performs a stale-data collection attempt as a fallback when someone opens the stats page.
+for the deployment commands, WARCON server-ID lookup, API-key configuration and tests.
+
+### OVH WARCON configuration
+
+After the WARCON endpoint has been deployed and tested, configure the private `wardogs-secrets.php`:
+
+```php
+'stats_source' => 'warcon',
+
+'warcon' => [
+    'url' => 'https://YOUR-WARCON-ORIGIN',
+    'stats_api_key' => 'THE_SAME_RANDOM_KEY_SET_IN_WARCON',
+],
+```
+
+The browser never receives the WARCON API key. OVH sends it server-to-server.
+
+### WARCON configuration
+
+WARCON receives:
+
+```env
+PUBLIC_STATS_API_KEY=LONG_RANDOM_SECRET
+PUBLIC_STATS_NORMAL_SERVERS=SERVER_1_ID,SERVER_2_ID
+PUBLIC_STATS_HARDCORE_SERVERS=SERVER_3_ID
+```
+
+The integration also adjusts WARCON session tracking so kills/deaths accumulate across WARDOGS match counter resets while a player remains connected. No WARCON database migration is required.
+
+## Temporary MariaDB fallback
+
+During the cutover, `public/api/player-stats.php` can continue using the already-configured MariaDB collector when:
+
+```php
+'stats_source' => 'mariadb',
+```
+
+The existing `database/schema.sql`, `stats-db.php`, `collect-stats.php` and health tooling are retained only until WARCON is confirmed live. Once WARCON has been tested through the public website, they can be removed in a cleanup change.
 
 ## Website development
 

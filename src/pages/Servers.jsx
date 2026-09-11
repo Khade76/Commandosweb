@@ -71,16 +71,9 @@ export default function Servers() {
                 <div><span>Mode</span><strong>{server.mode}</strong></div>
               </div>
               {server.joinId && (
-                <div className="server-join">
-                  <div>
-                    <span>WARDOGS Join ID</span>
-                    <strong>{server.joinId}</strong>
-                    <small>{copiedJoinId === String(server.joinId) ? 'Copied to clipboard' : 'Use this ID in the WARDOGS server browser.'}</small>
-                  </div>
-                  <div className="actions server-actions">
-                    <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(server.joinId)}>Join Server</a>
-                    <button className="button" type="button" onClick={() => copyJoinId(server.joinId)}>Copy Join ID</button>
-                  </div>
+                <div className="actions server-actions">
+                  <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(server.joinId)}>Join Server</a>
+                  <button className="button" type="button" onClick={() => copyJoinId(server.joinId)}>{copiedJoinId === String(server.joinId) ? 'Copied' : 'Copy Join ID'}</button>
                 </div>
               )}
               {server.scores && (
@@ -100,7 +93,7 @@ export default function Servers() {
         </div>
       </section>
       <section className="section cards-three">
-        <article><span>JOIN</span><h3>Join IDs</h3><p>Each public server shows its WARDOGS Join ID. The Join Server button copies it and launches WARDOGS through Steam.</p></article>
+        <article><span>JOIN</span><h3>Join Server</h3><p>Use the Join Server button to launch WARDOGS through Steam and copy the correct server ID automatically.</p></article>
         <article><span>MATCH</span><h3>Map & scores</h3><p>Current map and Valkyra, Lonestar and Manticore scores appear when the game/server interface exposes them.</p></article>
         <article><span>OPS</span><h3>Built to expand</h3><p>The backend is structured so WARDOGS RCON and additional hosts can be added without rebuilding this page.</p></article>
       </section>

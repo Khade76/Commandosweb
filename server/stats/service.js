@@ -5,6 +5,8 @@ import { PlayerStatsStore } from './player-stats-store.js'
 const DEFAULT_POLL_MS = 60_000
 const MIN_POLL_MS = 30_000
 const DEFAULT_PORT = 3100
+const DEFAULT_SERVER_COUNT = 3
+const VALID_GROUPS = new Set(['normal', 'hardcore'])
 
 function env(name, fallback = '') {
   return String(process.env[name] ?? fallback).trim()
@@ -20,6 +22,23 @@ function clampInteger(value, fallback, min, max) {
   const number = Number.parseInt(value, 10)
   if (!Number.isFinite(number)) return fallback
   return Math.min(max, Math.max(min, number))
+}
+
+function normaliseGroup(value, fallback = 'normal') {
+  const group = String(value || '').trim().toLowerCase()
+  return VALID_GROUPS.has(group) ? group : fallback
+}
+
+function serverGroup(index) {
+  const number = index + 1
+  const fallback = number === 3 ? 'hardcore' : 'normal'
+  return normaliseGroup(process.env[`WARDOGS_SERVER_${number}_STATS_GROUP`], fallback)
+}
+
+function configuredServerIndexes() {
+  const count = clampInteger(process.env.WARDOGS_STATS_SERVER_COUNT, DEFAULT_SERVER_COUNT, 1, 10)
+  return Array.from({ length: count }, (_value, index) => index)
+    .filter((index) => wardogsRconConfigured(index))
 }
 
 export async function startStatsService() {
@@ -43,30 +62,40 @@ export async function startStatsService() {
   })
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, service: '44th-wardogs-player-stats', summary: store.summary() })
+    res.json({
+      ok: true,
+      service: '44th-wardogs-player-stats',
+      summaries: {
+        normal: store.summary('normal'),
+        hardcore: store.summary('hardcore'),
+      },
+    })
   })
 
-  app.get('/api/stats/summary', (_req, res) => {
-    res.json({ summary: store.summary(), generatedAt: new Date().toISOString() })
+  app.get('/api/stats/summary', (req, res) => {
+    const group = normaliseGroup(req.query.group)
+    res.json({ summary: store.summary(group), generatedAt: new Date().toISOString() })
   })
 
   app.get('/api/stats/players', (req, res) => {
     const search = String(req.query.search || '')
     const sort = String(req.query.sort || 'kills')
+    const group = normaliseGroup(req.query.group)
     const limit = clampInteger(req.query.limit, 100, 1, 500)
     const offset = clampInteger(req.query.offset, 0, 0, 100_000)
-    const result = store.listPlayers({ search, sort, limit, offset })
+    const result = store.listPlayers({ search, sort, limit, offset, group })
 
     res.json({
       ...result,
-      summary: store.summary(),
+      summary: store.summary(group),
       generatedAt: new Date().toISOString(),
     })
   })
 
   app.get('/api/stats/players/:id', (req, res) => {
-    const player = store.getPlayer(req.params.id)
-    if (!player) return res.status(404).json({ error: 'Player not found' })
+    const group = normaliseGroup(req.query.group)
+    const player = store.getPlayer(req.params.id, group)
+    if (!player) return res.status(404).json({ error: 'Player not found in this stats group' })
     return res.json({ player, generatedAt: new Date().toISOString() })
   })
 
@@ -78,8 +107,10 @@ export async function startStatsService() {
     store.beginCycle()
 
     try {
-      for (let index = 0; index < 2; index += 1) {
-        if (!wardogsRconConfigured(index)) continue
+      const indexes = configuredServerIndexes()
+
+      for (const index of indexes) {
+        const group = serverGroup(index)
 
         try {
           const [status, players] = await Promise.all([
@@ -87,10 +118,10 @@ export async function startStatsService() {
             getWardogsRconPlayers(index),
           ])
 
-          store.recordServerPoll(index, status, players)
-          console.log(`[Player stats] Server #${index + 1}: observed ${players.length} players`)
+          store.recordServerPoll(index, group, status, players)
+          console.log(`[Player stats] Server #${index + 1} (${group}): observed ${players.length} players`)
         } catch (error) {
-          console.error(`[Player stats] Server #${index + 1} collection failed:`, error.message)
+          console.error(`[Player stats] Server #${index + 1} (${group}) collection failed:`, error.message)
         }
       }
 
@@ -107,9 +138,14 @@ export async function startStatsService() {
   timer.unref?.()
 
   const server = app.listen(port, host, () => {
+    const configured = configuredServerIndexes()
+      .map((index) => `#${index + 1}:${serverGroup(index)}`)
+      .join(', ') || 'none'
+
     console.log(`WARDOGS player stats API listening on http://${host}:${port}`)
     console.log(`Player stats file: ${filePath}`)
     console.log(`Player stats poll interval: ${intervalMs}ms`)
+    console.log(`Player stats servers: ${configured}`)
   })
 
   return {

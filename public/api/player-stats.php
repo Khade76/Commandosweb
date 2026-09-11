@@ -34,6 +34,7 @@ if ($baseUrl === '') {
 }
 
 $allowedSorts = ['kills', 'deaths', 'kd', 'time', 'matches', 'lastSeen', 'name'];
+$allowedGroups = ['normal', 'hardcore'];
 $query = [];
 
 if (isset($_GET['search']) && trim((string)$_GET['search']) !== '') {
@@ -42,6 +43,10 @@ if (isset($_GET['search']) && trim((string)$_GET['search']) !== '') {
 
 $sort = isset($_GET['sort']) ? (string)$_GET['sort'] : 'kills';
 $query['sort'] = in_array($sort, $allowedSorts, true) ? $sort : 'kills';
+
+$group = isset($_GET['group']) ? strtolower((string)$_GET['group']) : 'normal';
+$query['group'] = in_array($group, $allowedGroups, true) ? $group : 'normal';
+
 $query['limit'] = min(500, max(1, (int)($_GET['limit'] ?? 100)));
 $query['offset'] = min(100000, max(0, (int)($_GET['offset'] ?? 0)));
 

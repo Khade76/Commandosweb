@@ -83,6 +83,22 @@ export const servers = [
     notes: 'Connecting to live server status…',
   },
   {
+    id: 'wardogs-hardcore',
+    name: '44th Commandos #3 | Hardcore',
+    status: 'Unavailable',
+    region: 'Qonzer',
+    players: '— / 100',
+    map: '—',
+    mode: 'Hardcore',
+    scores: {
+      valkyra: null,
+      lonestar: null,
+      manticore: null,
+    },
+    address: '216.144.249.76:7779',
+    notes: 'Qonzer-hosted Hardcore server. Live RCON status will appear once its WARDOGS API endpoint is configured.',
+  },
+  {
     id: 'training-events',
     name: '44th Training & Events',
     status: 'Planned',

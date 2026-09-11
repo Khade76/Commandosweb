@@ -6,14 +6,25 @@ return [
     'region' => 'Europe / UK',
     'include_training_server' => true,
 
-    // Player stats are collected directly by OVH PHP and stored in the remote MariaDB database.
+    // Player stats source. Leave as 'mariadb' until the WARCON public stats route is deployed,
+    // then change this to 'warcon'.
+    'stats_source' => 'mariadb',
+
+    // WARCON becomes the single source of truth when stats_source = 'warcon'.
+    // The same random API key must be set as PUBLIC_STATS_API_KEY in WARCON.
+    'warcon' => [
+        'url' => 'http://CHANGE_ME_WARCON_HOST:3000',
+        'stats_api_key' => 'CHANGE_ME_TO_A_LONG_RANDOM_WARCON_STATS_KEY',
+    ],
+
+    // Temporary MariaDB fallback while the WARCON integration is being deployed.
+    // These settings can be removed after WARCON is confirmed as the live stats source.
     'stats_poll_seconds' => 60,
 
-    // Token used only to protect /api/collect-stats.php when called by a scheduled HTTP job.
+    // Token used only to protect /api/collect-stats.php for the temporary MariaDB collector.
     // It is NOT a WARDOGS/RCON token.
     'stats_collect_token' => 'CHANGE_ME_TO_A_LONG_RANDOM_TOKEN',
 
-    // Remote MariaDB used by the /stats page.
     'database' => [
         'host' => 'CHANGE_ME_DB_HOST',
         'port' => 3306,

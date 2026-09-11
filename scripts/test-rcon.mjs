@@ -99,7 +99,6 @@ async function testTls(hostname, port) {
 
   if (verified) return true
 
-  // Certificate-inspection only. No RCON password is sent on this connection.
   await new Promise((resolve) => {
     const socket = tls.connect({
       host: hostname,
@@ -213,24 +212,23 @@ async function probePlainHttp(hostname, port) {
   const unauth = await plainHttpRequest(hostname, port)
   if (!unauth.ok) return unauth
 
-  // This uses a deliberately invalid token, never the real RCON password.
   const fake = await plainHttpRequest(hostname, port, { fakeBearer: true })
-
   const likelyRcon = Boolean(unauth.looksLikeRcon || fake.looksLikeRcon)
+
   if (likelyRcon) {
     console.log('Service fingerprint: LIKELY WARDOGS RCON-compatible auth endpoint (/v1/status returns JSON-style 401).')
   } else {
     console.log('Service fingerprint: inconclusive. The HTTP service did not expose a distinctive WARDOGS-style auth response.')
   }
 
-  console.log('SECURITY: the real RCON password was NOT sent over plaintext HTTP.')
   return { ok: true, likelyRcon, unauth, fake }
 }
 
 async function authenticatedStatusRequest(url, password) {
   return new Promise((resolve) => {
     const target = new URL('/v1/status', url)
-    const request = https.request(target, {
+    const client = target.protocol === 'http:' ? http : https
+    const request = client.request(target, {
       method: 'GET',
       timeout: TIMEOUT_MS,
       headers: {
@@ -247,7 +245,7 @@ async function authenticatedStatusRequest(url, password) {
           try {
             console.log(JSON.stringify(JSON.parse(body), null, 2))
           } catch {
-            console.log(body.slice(0, 1000))
+            console.log(body.slice(0, 1500))
           }
         }
         resolve(response.statusCode >= 200 && response.statusCode < 300)
@@ -265,6 +263,16 @@ async function authenticatedStatusRequest(url, password) {
     })
     request.end()
   })
+}
+
+async function printCapabilities(index) {
+  try {
+    const result = await testWardogsRcon(index)
+    console.log('\n/v1/capabilities')
+    console.log(JSON.stringify(result.capabilities, null, 2))
+  } catch (error) {
+    console.error(`RCON server ${index + 1} follow-up failed: ${formatError(error)}`)
+  }
 }
 
 for (let index = 0; index < 2; index += 1) {
@@ -299,9 +307,26 @@ for (let index = 0; index < 2; index += 1) {
     continue
   }
 
+  if (parsed.protocol === 'http:') {
+    console.log('Transport: plain HTTP (expected for this Bisect WARDOGS RCON allocation).')
+    const probe = await probePlainHttp(hostname, port)
+    if (!probe?.likelyRcon) {
+      console.log('Diagnosis: the endpoint is reachable but does not strongly fingerprint as the expected WARDOGS RCON API.')
+      continue
+    }
+
+    const authOk = await authenticatedStatusRequest(config.url, config.password)
+    if (!authOk) {
+      console.log('Diagnosis: HTTP transport is working. Use the status/body above to distinguish an invalid RCON password from an API error.')
+      continue
+    }
+
+    await printCapabilities(index)
+    continue
+  }
+
   if (parsed.protocol !== 'https:') {
-    console.log('Diagnosis: remote WARDOGS RCON should use HTTPS according to the community reference. Running safe plaintext fingerprint probes only.')
-    await probePlainHttp(hostname, port)
+    console.log('Diagnosis: RCON URL must use http:// or https://.')
     continue
   }
 
@@ -309,7 +334,7 @@ for (let index = 0; index < 2; index += 1) {
   if (!tlsOk) {
     const probe = await probePlainHttp(hostname, port)
     if (probe?.likelyRcon) {
-      console.log('Diagnosis: this endpoint strongly resembles WARDOGS RCON, but it is exposed as PLAINTEXT HTTP rather than TLS. This differs from the community reference and should be raised with the host before sending the full-access bearer password remotely.')
+      console.log('Diagnosis: this is a plaintext WARDOGS RCON endpoint. Change the configured URL from https:// to http:// and re-run the test.')
     } else {
       console.log('Diagnosis: TCP is reachable but TLS is unavailable and the plaintext service fingerprint is inconclusive.')
     }
@@ -322,11 +347,5 @@ for (let index = 0; index < 2; index += 1) {
     continue
   }
 
-  try {
-    const result = await testWardogsRcon(index)
-    console.log('\n/v1/capabilities')
-    console.log(JSON.stringify(result.capabilities, null, 2))
-  } catch (error) {
-    console.error(`RCON server ${serverNumber} follow-up failed: ${formatError(error)}`)
-  }
+  await printCapabilities(index)
 }

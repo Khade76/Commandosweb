@@ -87,27 +87,34 @@ function countOnlinePlayers(payload) {
   return Number.isFinite(value) ? value : null
 }
 
-export function bisectConfigured() {
-  return Boolean(process.env.BISECT_API_KEY && process.env.BISECT_SERVER_UUID)
+export function getBisectServerIdentifiers() {
+  const configured = process.env.BISECT_SERVER_IDS || process.env.BISECT_SERVER_UUID || ''
+  return configured
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
 }
 
-export async function getBisectWardogsServer() {
-  const uuid = process.env.BISECT_SERVER_UUID
-  if (!uuid) throw new Error('BISECT_SERVER_UUID is not configured')
+export function bisectConfigured() {
+  return Boolean(process.env.BISECT_API_KEY && getBisectServerIdentifiers().length)
+}
 
-  const encodedUuid = encodeURIComponent(uuid)
+export async function getBisectWardogsServer(identifier, index = 0) {
+  if (!identifier) throw new Error('Bisect server identifier is not configured')
+
+  const encodedIdentifier = encodeURIComponent(identifier)
   const [detailsPayload, resourcesPayload, playersPayload, startupPayload] = await Promise.all([
-    bisectRequest(`/api/client/servers/${encodedUuid}`),
-    bisectRequest(`/api/client/servers/${encodedUuid}/resources`),
-    bisectRequest(`/api/client/servers/${encodedUuid}/player/online`, { optional: true }),
-    bisectRequest(`/api/client/servers/${encodedUuid}/startup`, { optional: true }),
+    bisectRequest(`/api/client/servers/${encodedIdentifier}`),
+    bisectRequest(`/api/client/servers/${encodedIdentifier}/resources`),
+    bisectRequest(`/api/client/servers/${encodedIdentifier}/player/online`, { optional: true }),
+    bisectRequest(`/api/client/servers/${encodedIdentifier}/startup`, { optional: true }),
   ])
 
   const details = unwrap(detailsPayload)
   const resources = unwrap(resourcesPayload)
   const online = countOnlinePlayers(playersPayload)
 
-  const configuredMax = Number(process.env.WARDOGS_MAX_PLAYERS || 100)
+  const configuredMax = Number(process.env[`WARDOGS_SERVER_${index + 1}_MAX_PLAYERS`] || process.env.WARDOGS_MAX_PLAYERS || 100)
   const startupMax = Number(startupValue(startupPayload, ['MAX_PLAYERS', 'MAXPLAYERS', 'SERVER_MAX_PLAYERS']))
   const maxPlayers = Number.isFinite(startupMax) && startupMax > 0 ? startupMax : configuredMax
 
@@ -139,11 +146,16 @@ export async function getBisectWardogsServer() {
     manticore: numericScore(details, 'manticore'),
   }
 
+  const configuredName = process.env[`WARDOGS_SERVER_${index + 1}_NAME`]
+  const configuredRegion = process.env[`WARDOGS_SERVER_${index + 1}_REGION`]
+  const configuredJoinInfo = process.env[`WARDOGS_SERVER_${index + 1}_JOIN_INFO`]
+
   return {
-    id: 'wardogs-main',
-    name: process.env.WARDOGS_PUBLIC_SERVER_NAME || details.name || '44th Commando Regiment — WARDOGS Main',
+    id: `wardogs-${identifier}`,
+    identifier,
+    name: configuredName || details.name || `44th Commando Regiment — WARDOGS #${index + 1}`,
     status: onlineState ? 'Online' : currentState === 'unknown' ? 'Unknown' : 'Offline',
-    region: process.env.WARDOGS_SERVER_REGION || 'Europe / UK',
+    region: configuredRegion || process.env.WARDOGS_SERVER_REGION || 'Europe / UK',
     players: online === null ? `— / ${maxPlayers}` : `${online} / ${maxPlayers}`,
     playerCount: online,
     maxPlayers,
@@ -153,7 +165,7 @@ export async function getBisectWardogsServer() {
     scoreAvailable: Object.values(scores).some((score) => score !== null),
     provider: 'BisectHosting',
     notes: 'Live server information supplied through the BisectHosting Starbase API.',
-    address: process.env.WARDOGS_PUBLIC_JOIN_INFO || '',
+    address: configuredJoinInfo || process.env.WARDOGS_PUBLIC_JOIN_INFO || '',
     updatedAt: new Date().toISOString(),
   }
 }

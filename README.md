@@ -1,33 +1,33 @@
 # 44th Commando Regiment — WARDOGS Website
 
-React + Node.js website for the 44th Commando Regiment WARDOGS community.
+React website for the 44th Commando Regiment WARDOGS community, with live WARDOGS server status and Discord integrations.
 
 ## Stack
 
 - React
 - Vite
-- Node.js 20+
-- Express
-- Discord.js
+- PHP 8.x production status API for OVH shared hosting
+- Optional Node.js/Express backend for local/VPS deployments
+- Discord.js status bots
 - Local lightweight router aliased as `react-router-dom`
 
 ## Included
 
 - Full-screen 44th/WARDOGS recruitment homepage
 - Separate routed pages for Home, About, Companies, each company, Our Servers, Enlist, WARDOGS and Donate
-- Local assets in `public/assets` so the site is not dependent on Google Drive hotlinks
+- Local assets in `public/assets`
 - Ko-fi Donate link: `https://ko-fi.com/44thwardogs`
 - Discord invite: `https://discord.gg/44thwardogs`
-- Express production server
-- `/api/health` endpoint
-- `/api/servers` endpoint with BisectHosting infrastructure data and optional direct WARDOGS RCON match data
-- Live server state, players, map, mode, match timer and faction scores when RCON is configured
+- Live WARDOGS server name, map, mode, players and faction scores
+- WARDOGS join IDs for Server #1 and Server #2
+- PHP server-status endpoint for FileZilla-only OVH hosting
+- Optional Express `/api/servers` endpoint for Node deployments/local testing
 - Two lightweight Discord presence bots for WARDOGS Server #1 and Server #2
-- Visible HTML loading fallback and React error boundary so the site should not silently black-screen
+- Visible HTML loading fallback and React error boundary
 
 ## Development
 
-Install dependencies:
+Install dependencies on your PC:
 
 ```bash
 npm install
@@ -39,43 +39,181 @@ Start the Vite development server:
 npm run dev
 ```
 
-The development site runs on port `5173` by default.
+The development site runs on port `5173` by default. During development the Servers page uses the Node endpoint at `/api/servers` unless `VITE_SERVERS_API_URL` is supplied.
 
-If you previously installed dependencies before the router changes, run this once to clear stale installs:
+## OVH shared hosting deployment (FileZilla only)
 
-```bash
-rm -rf node_modules package-lock.json
-npm install
-npm run dev
+The production website does **not** require Node.js, SSH, PM2, systemd or command-line access on OVH.
+
+The React site is built on your PC. Vite copies `public/api/servers.php` into `dist/api/servers.php`, and OVH executes that PHP file whenever the public Servers page asks for live status.
+
+### 1. Create the private RCON config
+
+Copy:
+
+```text
+ovh/wardogs-secrets.example.php
 ```
 
-On Windows PowerShell:
+to a new local file named:
+
+```text
+wardogs-secrets.php
+```
+
+Put the two real RCON passwords into that file. The server URLs and join IDs are already populated:
+
+```php
+'url' => 'http://165.217.136.52:9001', // Server #1
+'joinId' => '175590',
+
+'url' => 'http://165.217.136.99:9006', // Server #2
+'joinId' => '294832',
+```
+
+`wardogs-secrets.php` is gitignored and must never be committed.
+
+### 2. Build the website on your PC
+
+From the repository folder:
 
 ```powershell
-Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+git pull
 npm install
-npm run dev
-```
-
-## Production
-
-Build the React frontend:
-
-```bash
 npm run build
 ```
 
-Start the Node.js/Express server:
+The upload-ready website is created in:
+
+```text
+dist/
+```
+
+The build automatically contains:
+
+```text
+dist/
+├── index.html
+├── .htaccess
+├── assets/
+└── api/
+    └── servers.php
+```
+
+### 3. Upload with FileZilla
+
+Your OVH FTP layout should end up like this:
+
+```text
+/
+├── wardogs-secrets.php        <- private, outside the website folder
+└── www/
+    ├── index.html
+    ├── .htaccess
+    ├── assets/
+    └── api/
+        └── servers.php
+```
+
+Upload **the contents of `dist/`** into `/www`.
+
+Upload `wardogs-secrets.php` one level above `/www`. Do **not** place the secret file inside `/www`, `/www/api`, `public`, or `dist`.
+
+In FileZilla, make sure hidden files are shown so `.htaccess` is uploaded.
+
+### 4. Test the PHP API
+
+Open this in a browser using the live website domain:
+
+```text
+https://YOUR-DOMAIN/api/servers.php
+```
+
+A working setup returns JSON containing both WARDOGS servers, for example:
+
+```json
+{
+  "servers": [
+    {
+      "name": "44th Commandos #1 | New Player Friendly | discord.gg/44thwardogs",
+      "status": "Online",
+      "players": "99 / 100",
+      "map": "Bakurani",
+      "mode": "KOTH",
+      "scores": {
+        "valkyra": 46,
+        "lonestar": 7,
+        "manticore": 3
+      }
+    }
+  ]
+}
+```
+
+If the private config is missing, the endpoint returns a `503` JSON message telling you to upload `wardogs-secrets.php` above `/www`.
+
+### PHP API behaviour
+
+The OVH PHP endpoint:
+
+- calls `GET /v1/status` on both confirmed Bisect WARDOGS RCON endpoints
+- sends the RCON password only from PHP on the server; the browser never receives it
+- maps the current server name, players, maximum players, map and mode
+- maps Valkyra, Lonestar and Manticore scores
+- keeps the existing WARDOGS Join IDs
+- caches successful RCON status for 15 seconds in the PHP temporary directory
+- uses the last cached status if RCON briefly becomes unavailable
+- returns a safe unavailable state if no cached result exists
+
+The public React Servers page refreshes the endpoint every 30 seconds while the page is open.
+
+## WARDOGS RCON endpoints
+
+Confirmed Bisect endpoints:
+
+```text
+Server #1: http://165.217.136.52:9001
+Server #2: http://165.217.136.99:9006
+```
+
+Both use bearer-token authentication and `GET /v1/status` returns live WARDOGS match state including server name, map, experience, players and faction scores.
+
+The RCON password is a full-access bearer token. Keep it only in `wardogs-secrets.php` on OVH or in `.env` for Node/local testing.
+
+## Optional Node.js backend
+
+The existing Node/Express backend remains available for local testing or a future VPS/Node host:
 
 ```bash
+npm run build
 npm start
 ```
 
-The production server uses `PORT` when supplied, otherwise port `3000`. The backend automatically loads a local `.env` file when present.
+Node loads `.env` automatically and exposes:
 
-### BisectHosting Starbase integration
+```text
+GET /api/health
+GET /api/servers
+```
 
-Copy `.env.example` to `.env` on the OVH backend and set the API key there. The two known Bisect server identifiers are already included in `.env.example`:
+Typical Node RCON settings:
+
+```env
+WARDOGS_RCON_SERVER_1_URL=http://165.217.136.52:9001
+WARDOGS_RCON_SERVER_1_PASSWORD=your-rcon-password
+WARDOGS_RCON_SERVER_2_URL=http://165.217.136.99:9006
+WARDOGS_RCON_SERVER_2_PASSWORD=your-rcon-password
+```
+
+You can test Node RCON locally with:
+
+```bash
+npm run test:rcon
+```
+
+## BisectHosting Starbase integration
+
+The Node backend also supports BisectHosting as an infrastructure/fallback provider:
 
 ```env
 BISECT_API_KEY=your-starbase-api-key
@@ -85,57 +223,11 @@ WARDOGS_SERVER_REGION=Europe / UK
 WARDOGS_MAX_PLAYERS=100
 ```
 
-`BISECT_API_KEY` must never be added to React/Vite variables or committed to GitHub. The browser calls the 44th Node backend, and only the backend talks to Starbase.
+This is optional for the FileZilla/PHP website deployment because the PHP production endpoint reads the live game status directly from WARDOGS RCON.
 
-The backend accepts the short Starbase server identifiers shown in the panel. It refreshes live results at most once every 15 seconds. If Starbase is unavailable, the public endpoint returns a safe fallback rather than exposing API errors or secrets.
+## Discord server status bots
 
-To test the Bisect connection directly from OVH without exposing the API key, run:
-
-```bash
-npm run test:bisect
-```
-
-The diagnostic checks server details, resources, online players, and startup metadata for both configured servers. Sensitive fields such as passwords, tokens, credentials, and API keys are redacted. It also prints RCON/API-related startup variables such as the assigned internal/API port when Bisect exposes them.
-
-### WARDOGS RCON live match integration
-
-The backend can query the WARDOGS `/v1/status` API directly and use it as the primary source for live match information. Bisect remains the infrastructure/fallback source.
-
-The confirmed Bisect WARDOGS RCON endpoints are exposed over plain HTTP:
-
-```env
-WARDOGS_RCON_SERVER_1_URL=http://165.217.136.52:9001
-WARDOGS_RCON_SERVER_1_PASSWORD=your-rcon-password
-
-WARDOGS_RCON_SERVER_2_URL=http://165.217.136.99:9006
-WARDOGS_RCON_SERVER_2_PASSWORD=your-rcon-password
-```
-
-The RCON password is a full-access bearer token, not a read-only key, so it must never be sent to the browser or committed to GitHub. Keep the RCON calls server-side on the OVH Node backend only.
-
-When RCON is available, `/api/servers` prefers its live values for:
-
-- server name
-- online state
-- current/max players
-- current map
-- current experience/mode
-- match elapsed seconds
-- lighting
-- score cap/tick data
-- Valkyra/Lonestar/Manticore faction scores when the server includes numeric score fields
-
-Test the RCON connection from OVH with:
-
-```bash
-npm run test:rcon
-```
-
-That command checks DNS/TCP, fingerprints the `/v1/status` endpoint, authenticates using the configured RCON password, then calls `/v1/status` and `/v1/capabilities`. It never prints the RCON passwords.
-
-### Discord server status bots
-
-The project can run two Discord bot accounts from one Node process. Each bot is bound to one WARDOGS server and updates its Discord presence every 30 seconds from the existing public `/api/servers` endpoint.
+The two Discord status bots still require a long-running Node process somewhere. They are separate from the website and cannot run from ordinary FileZilla-only OVH shared hosting.
 
 Typical presence:
 
@@ -144,43 +236,26 @@ Server #1 bot: Online • 99/100 players
 Server #2 bot: Online • 1/100 players
 ```
 
-If a server is offline, the bot presence changes to red/DND and displays `Offline • 0/100 players`. If the live status cannot be loaded, the bot goes idle and shows `Status unavailable`.
-
-Create two applications in the Discord Developer Portal, add a Bot user to each application, invite both bots to the 44th Discord, and place their tokens only in the OVH `.env`:
+Configuration:
 
 ```env
 DISCORD_WARDOGS_SERVER_1_BOT_TOKEN=your-server-1-bot-token
 DISCORD_WARDOGS_SERVER_1_IDENTIFIER=278c7bc5
-
 DISCORD_WARDOGS_SERVER_2_BOT_TOKEN=your-server-2-bot-token
 DISCORD_WARDOGS_SERVER_2_IDENTIFIER=9290beb1
-
-# Optional. Defaults to http://127.0.0.1:$PORT/api/servers
 DISCORD_STATUS_API_URL=
 DISCORD_STATUS_REFRESH_MS=30000
 ```
 
-No privileged Discord Gateway intents are required. The bot process only needs the standard Guilds intent and does not read messages.
-
-Start both bots with:
+Start them on a machine/VPS that can run Node continuously:
 
 ```bash
 npm run start:bots
 ```
 
-Run `npm start` and `npm run start:bots` as separate long-running processes on OVH (for example with systemd or PM2). Both bot accounts share one `/api/servers` request per refresh cycle, so they reuse the backend's existing RCON/Bisect cache and the bot process does not need to make its own RCON calls.
+## Apache routing
 
-### Apache static hosting
-
-Upload the contents of `dist/`, including the hidden `.htaccess` file, to the website document root. `public/.htaccess` is copied into the build and routes direct page requests such as `/about`, `/rules`, and `/companies/vanguard` to React's `index.html`. Existing files and directories are served normally; API URLs are not rewritten.
-
-Apache must enable `mod_rewrite` and permit these directives through `AllowOverride FileInfo` (or the equivalent hosting setting). If direct page links still return an Apache 404, confirm that `.htaccess` was uploaded next to `index.html` and that the host allows rewrite overrides. Static Apache hosting does not run the Express API, so live server data requires the Node backend to be running on OVH and `/api/*` to be routed to it.
-
-Example:
-
-```bash
-PORT=8080 npm start
-```
+`public/.htaccess` is copied automatically into `dist/`. It sends direct React routes such as `/about`, `/rules`, and `/companies/vanguard` to `index.html`, while leaving real files/directories such as `/api/servers.php` untouched.
 
 ## Routes
 
@@ -193,25 +268,7 @@ PORT=8080 npm start
 - `/servers`
 - `/enlist`
 - `/rules`
-- `/wardogs` (legacy alias for Rules)
-- `/donate` (legacy redirect to Ko-fi; navigation links open Ko-fi directly)
-
-## API
-
-Rules content lives in `src/data/rules.js`. Add a category with a stable `id`, `title`, `description`, and a `rules` array of `{ title, text }` entries. Empty categories display “Not published”; only add game or event rules once agreed. The layout uses the expandable categories on https://www.44thsquad.com/rules as a reference, with community wording adapted for this site.
-
-Health check:
-
-```text
-GET /api/health
-```
-
-Live server directory:
-
-```text
-GET /api/servers
-```
-
-The public server endpoint returns public-safe data only. Bisect API keys and WARDOGS RCON passwords are never returned to the browser.
+- `/wardogs`
+- `/donate`
 
 The WARDOGS game link points to the official Steam page. This community website is not affiliated with BULKHEAD or Team17.

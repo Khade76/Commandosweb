@@ -7,6 +7,7 @@ import About from './pages/About.jsx'
 import Companies from './pages/Companies.jsx'
 import Company from './pages/Company.jsx'
 import Servers from './pages/Servers.jsx'
+import Stats from './pages/Stats.jsx'
 import Enlist from './pages/Enlist.jsx'
 import Rules from './pages/Rules.jsx'
 import Donate from './pages/Donate.jsx'
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/companies" element={<Companies />} />
           <Route path="/companies/:companyKey" element={<Company />} />
           <Route path="/servers" element={<Servers />} />
+          <Route path="/stats" element={<Stats />} />
           <Route path="/enlist" element={<Enlist />} />
           <Route path="/rules" element={<Rules />} />
           <Route path="/wardogs" element={<Rules />} />

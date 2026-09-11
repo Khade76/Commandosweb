@@ -31,6 +31,29 @@ function scrub(value, depth = 0) {
   return output
 }
 
+function unwrap(entry) {
+  return entry?.attributes ?? entry?.data?.attributes ?? entry ?? {}
+}
+
+function rconStartupVariables(payload) {
+  const entries = Array.isArray(payload?.data) ? payload.data : []
+  const results = []
+
+  for (const entry of entries) {
+    const attributes = unwrap(entry)
+    const variable = String(attributes.env_variable || attributes.variable || attributes.name || '').trim()
+    if (!variable || !/(rcon|api.*port|internal.*port|server.*port)/i.test(variable)) continue
+
+    const rawValue = attributes.server_value ?? attributes.value ?? attributes.default_value ?? null
+    results.push({
+      variable,
+      value: sensitiveKey.test(variable) ? '[redacted]' : rawValue,
+    })
+  }
+
+  return results
+}
+
 async function request(path) {
   const response = await fetch(`${host}${path}`, {
     headers: {
@@ -54,6 +77,12 @@ for (const id of ids) {
       const result = await request(path)
       console.log(`\n${path} -> HTTP ${result.status}`)
       console.log(JSON.stringify(scrub(result.body), null, 2))
+
+      if (suffix === '/startup') {
+        const variables = rconStartupVariables(result.body)
+        console.log('\nRCON/port startup variables:')
+        console.log(JSON.stringify(variables.length ? variables : ['No RCON-related startup variables found'], null, 2))
+      }
     } catch (error) {
       console.error(`${path} -> ${error.message}`)
     }

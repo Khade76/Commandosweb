@@ -19,9 +19,8 @@ React + Node.js website for the 44th Commando Regiment WARDOGS community.
 - Discord invite: `https://discord.gg/44thwardogs`
 - Express production server
 - `/api/health` endpoint
-- `/api/servers` endpoint with server-side BisectHosting Starbase integration
-- Live server power state and online-player count when Starbase is configured
-- Map/mode/faction-score fields prepared for WARDOGS data exposed by the server integration
+- `/api/servers` endpoint with BisectHosting infrastructure data and optional direct WARDOGS RCON match data
+- Live server state, players, map, mode, match timer and faction scores when RCON is configured
 - Visible HTML loading fallback and React error boundary so the site should not silently black-screen
 
 ## Development
@@ -94,7 +93,43 @@ To test the Bisect connection directly from OVH without exposing the API key, ru
 npm run test:bisect
 ```
 
-The diagnostic checks server details, resources, online players, and startup metadata for both configured servers. Sensitive fields such as passwords, tokens, credentials, and API keys are redacted from its output. The output is intended to reveal whether WARDOGS exposes map, mode, team, faction, or score fields that can be mapped into the public server cards.
+The diagnostic checks server details, resources, online players, and startup metadata for both configured servers. Sensitive fields such as passwords, tokens, credentials, and API keys are redacted. It also prints RCON/API-related startup variables such as the assigned internal/API port when Bisect exposes them.
+
+### WARDOGS RCON live match integration
+
+The backend can query the WARDOGS `/v1/status` API directly and use it as the primary source for live match information. Bisect remains the infrastructure/fallback source.
+
+Configure each server on OVH only:
+
+```env
+WARDOGS_RCON_SERVER_1_URL=https://165.217.136.52:RCON_PORT
+WARDOGS_RCON_SERVER_1_PASSWORD=your-rcon-password
+
+WARDOGS_RCON_SERVER_2_URL=https://165.217.136.99:RCON_PORT
+WARDOGS_RCON_SERVER_2_PASSWORD=your-rcon-password
+```
+
+Remote RCON listeners must use HTTPS. The RCON password is a full-access bearer token, not a read-only key, so it must never be sent to the browser or committed to GitHub.
+
+When RCON is available, `/api/servers` prefers its live values for:
+
+- server name
+- online state
+- current/max players
+- current map
+- current experience/mode
+- match elapsed seconds
+- lighting
+- score cap/tick data
+- Valkyra/Lonestar/Manticore faction scores when the server includes numeric score fields
+
+Test the RCON connection from OVH with:
+
+```bash
+npm run test:rcon
+```
+
+That command calls `/v1/status` and `/v1/capabilities` for both configured servers and prints the responses. It does not print the RCON passwords.
 
 ### Apache static hosting
 
@@ -138,6 +173,6 @@ Live server directory:
 GET /api/servers
 ```
 
-The server endpoint returns public-safe data only. The Bisect API key is never returned to the browser.
+The public server endpoint returns public-safe data only. Bisect API keys and WARDOGS RCON passwords are never returned to the browser.
 
 The WARDOGS game link points to the official Steam page. This community website is not affiliated with BULKHEAD or Team17.

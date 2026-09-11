@@ -50,13 +50,18 @@ export const servers = [
   {
     id: 'wardogs-main',
     name: '44th Commando Regiment — WARDOGS Main',
-    status: 'Coming Soon',
+    status: 'Loading',
     region: 'Europe / UK',
-    players: '—',
+    players: '— / 100',
     map: '—',
     mode: 'WARDOGS',
-    address: 'Server details will be added here once the public server is available.',
-    notes: 'Prepared for live status, map, player count and join information.',
+    scores: {
+      valkyra: null,
+      lonestar: null,
+      manticore: null,
+    },
+    address: '',
+    notes: 'Connecting to live server status…',
   },
   {
     id: 'training-events',

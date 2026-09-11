@@ -1,6 +1,6 @@
 {
   "name": "44th-commando-wardogs-web",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,6 +11,8 @@
     "build": "vite build",
     "start": "node server/index.js",
     "start:bots": "node server/bots/wardogs-status-bots.js",
+    "start:stats": "node server/stats/index.js",
+    "start:vps": "node server/vps/index.js",
     "test:bisect": "node scripts/test-bisect.mjs",
     "test:rcon": "node scripts/test-rcon.mjs",
     "preview": "vite preview --host 0.0.0.0"

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './styles-routed.css'
+import './stats.css'
 
 class AppErrorBoundary extends Component {
   constructor(props) {

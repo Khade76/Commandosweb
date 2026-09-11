@@ -27,6 +27,13 @@ function wardogsHealthToken(): string
     return isset($_GET['token']) ? trim((string)$_GET['token']) : '';
 }
 
+function wardogsHealthExpectedToken(array $config): string
+{
+    $token = trim((string)($config['stats_collect_token'] ?? ''));
+    if ($token !== '') return $token;
+    return trim((string)($config['stats_source_token'] ?? ''));
+}
+
 function wardogsHealthError(Throwable $error): array
 {
     return [
@@ -38,7 +45,7 @@ function wardogsHealthError(Throwable $error): array
 
 try {
     $config = wardogsStatsConfig();
-    $expectedToken = trim((string)($config['stats_collect_token'] ?? ''));
+    $expectedToken = wardogsHealthExpectedToken($config);
     $providedToken = wardogsHealthToken();
 
     if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToken, $providedToken)) {

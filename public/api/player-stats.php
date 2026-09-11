@@ -37,7 +37,7 @@ $allowedSorts = ['kills', 'deaths', 'kd', 'time', 'matches', 'lastSeen', 'name']
 $query = [];
 
 if (isset($_GET['search']) && trim((string)$_GET['search']) !== '') {
-    $query['search'] = mb_substr(trim((string)$_GET['search']), 0, 80);
+    $query['search'] = substr(trim((string)$_GET['search']), 0, 80);
 }
 
 $sort = isset($_GET['sort']) ? (string)$_GET['sort'] : 'kills';

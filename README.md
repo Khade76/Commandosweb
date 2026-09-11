@@ -135,7 +135,7 @@ That command checks DNS/TCP, fingerprints the `/v1/status` endpoint, authenticat
 
 ### Discord server status bots
 
-The project can run two Discord bot accounts from one Node process. Each bot is bound to one WARDOGS server and updates its Discord presence every 30 seconds using the same live server aggregation already used by the website.
+The project can run two Discord bot accounts from one Node process. Each bot is bound to one WARDOGS server and updates its Discord presence every 30 seconds from the existing public `/api/servers` endpoint.
 
 Typical presence:
 
@@ -155,6 +155,8 @@ DISCORD_WARDOGS_SERVER_1_IDENTIFIER=278c7bc5
 DISCORD_WARDOGS_SERVER_2_BOT_TOKEN=your-server-2-bot-token
 DISCORD_WARDOGS_SERVER_2_IDENTIFIER=9290beb1
 
+# Optional. Defaults to http://127.0.0.1:$PORT/api/servers
+DISCORD_STATUS_API_URL=
 DISCORD_STATUS_REFRESH_MS=30000
 ```
 
@@ -166,7 +168,7 @@ Start both bots with:
 npm run start:bots
 ```
 
-Run `npm start` and `npm run start:bots` as separate long-running processes on OVH (for example with systemd or PM2). The bots reuse the existing backend provider code, so they do not introduce a second copy of the RCON integration.
+Run `npm start` and `npm run start:bots` as separate long-running processes on OVH (for example with systemd or PM2). Both bot accounts share one `/api/servers` request per refresh cycle, so they reuse the backend's existing RCON/Bisect cache and the bot process does not need to make its own RCON calls.
 
 ### Apache static hosting
 

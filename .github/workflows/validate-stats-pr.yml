@@ -1,0 +1,37 @@
+name: Validate stats PR
+
+on:
+  push:
+    branches:
+      - feature/player-stats-groups
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/player-stats-groups
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build website
+        run: npm run build
+
+      - name: Check stats service syntax
+        run: |
+          node --check server/stats/index.js
+          node --check server/stats/service.js
+          node --check server/stats/source.js
+          node --check server/stats/mariadb-store.js
+
+      - name: Lint PHP source endpoint
+        run: php -l public/api/stats-source.php

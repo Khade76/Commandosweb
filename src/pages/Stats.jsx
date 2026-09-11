@@ -3,6 +3,11 @@ import { images } from '../data/site.js'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
 
+const GROUP_LABELS = {
+  normal: 'Normal Servers',
+  hardcore: 'Hardcore',
+}
+
 function formatDuration(seconds) {
   const value = Number(seconds)
   if (!Number.isFinite(value) || value <= 0) return '—'
@@ -19,13 +24,35 @@ function formatLastSeen(value) {
   return date.toLocaleString()
 }
 
+function primaryFaction(player) {
+  const entries = Object.entries(player?.factionCounts || {})
+  if (!entries.length) return '—'
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]))
+  return entries[0][0]
+}
+
+function serversPlayed(player) {
+  return Object.keys(player?.serverCounts || {})
+    .map((key) => Number(String(key).replace('server-', '')))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+    .map((number) => `#${number}`)
+    .join(', ') || '—'
+}
+
 export default function Stats() {
   const [players, setPlayers] = useState([])
   const [summary, setSummary] = useState(null)
+  const [group, setGroup] = useState('normal')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('kills')
+  const [selectedId, setSelectedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    setSelectedId(null)
+  }, [group])
 
   useEffect(() => {
     let cancelled = false
@@ -36,6 +63,7 @@ export default function Stats() {
       setError('')
 
       const params = new URLSearchParams({
+        group,
         sort,
         limit: '200',
       })
@@ -60,6 +88,7 @@ export default function Stats() {
         if (!cancelled && fetchError.name !== 'AbortError') {
           setError(fetchError.message || 'Unable to load player stats')
           setPlayers([])
+          setSummary(null)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -71,12 +100,17 @@ export default function Stats() {
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [search, sort])
+  }, [group, search, sort])
 
   const totalHours = useMemo(() => {
     const seconds = Number(summary?.secondsTracked)
     return Number.isFinite(seconds) ? Math.round(seconds / 3600) : 0
   }, [summary])
+
+  const selectedPlayer = useMemo(
+    () => players.find((player) => player.id === selectedId) || null,
+    [players, selectedId],
+  )
 
   return (
     <>
@@ -85,11 +119,25 @@ export default function Stats() {
         <div className="shell">
           <p className="kicker">44th Intelligence</p>
           <h1>Player<br /><em>Stats.</em></h1>
-          <p className="hero-copy">Persistent WARDOGS player statistics collected from the 44th servers.</p>
+          <p className="hero-copy">Search persistent WARDOGS player statistics collected across the 44th servers.</p>
         </div>
       </section>
 
       <section className="section stats-page">
+        <div className="stats-group-switch" aria-label="Stats server group">
+          {Object.entries(GROUP_LABELS).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={group === key ? 'active' : ''}
+              onClick={() => setGroup(key)}
+            >
+              <span>{label}</span>
+              <small>{key === 'normal' ? 'Servers #1 + #2 combined' : 'Server #3 only'}</small>
+            </button>
+          ))}
+        </div>
+
         <div className="stats-summary-grid">
           <article><span>Tracked players</span><strong>{summary?.trackedPlayers ?? '—'}</strong></article>
           <article><span>Online now</span><strong>{summary?.onlinePlayers ?? '—'}</strong></article>
@@ -100,7 +148,7 @@ export default function Stats() {
         <div className="stats-toolbar">
           <label>
             <span>Search player</span>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Player name or Steam ID" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Player name, previous name or Steam ID" />
           </label>
           <label>
             <span>Sort by</span>
@@ -140,12 +188,18 @@ export default function Stats() {
               </thead>
               <tbody>
                 {players.map((player) => (
-                  <tr key={player.id}>
+                  <tr key={player.id} className={selectedId === player.id ? 'selected' : undefined}>
                     <td>
-                      <strong>{player.name}</strong>
-                      {player.currentFaction && <small>{player.currentFaction}</small>}
+                      <button className="stats-player-link" type="button" onClick={() => setSelectedId(player.id)}>
+                        <strong>{player.name}</strong>
+                        <small>{player.currentFaction || primaryFaction(player)}</small>
+                      </button>
                     </td>
-                    <td><span className={`player-state ${player.online ? 'online' : 'offline'}`}>{player.online ? `Online${player.currentServer ? ` • #${player.currentServer}` : ''}` : 'Offline'}</span></td>
+                    <td>
+                      <span className={`player-state ${player.online ? 'online' : 'offline'}`}>
+                        {player.online ? `Online${player.currentServer ? ` • #${player.currentServer}` : ''}` : 'Offline'}
+                      </span>
+                    </td>
                     <td>{player.totalKills}</td>
                     <td>{player.totalDeaths}</td>
                     <td>{player.kd}</td>
@@ -155,7 +209,7 @@ export default function Stats() {
                   </tr>
                 ))}
                 {!loading && !players.length && (
-                  <tr><td colSpan="8" className="stats-empty">No matching players found.</td></tr>
+                  <tr><td colSpan="8" className="stats-empty">No matching players found in {GROUP_LABELS[group]}.</td></tr>
                 )}
               </tbody>
             </table>
@@ -163,7 +217,39 @@ export default function Stats() {
           </div>
         )}
 
-        <p className="stats-footnote">Statistics begin accumulating when the VPS collector is started. Kill/death totals are derived from successive live RCON player snapshots and match resets.</p>
+        {selectedPlayer && !error && (
+          <article className="player-profile-card">
+            <div className="player-profile-heading">
+              <div>
+                <p className="kicker">Player Profile // {GROUP_LABELS[group]}</p>
+                <h2>{selectedPlayer.name}</h2>
+                <p>{selectedPlayer.id}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedId(null)}>Close</button>
+            </div>
+
+            <div className="player-profile-grid">
+              <div><span>Kills</span><strong>{selectedPlayer.totalKills}</strong></div>
+              <div><span>Deaths</span><strong>{selectedPlayer.totalDeaths}</strong></div>
+              <div><span>K/D</span><strong>{selectedPlayer.kd}</strong></div>
+              <div><span>Matches seen</span><strong>{selectedPlayer.matchesSeen}</strong></div>
+              <div><span>Tracked time</span><strong>{formatDuration(selectedPlayer.secondsTracked)}</strong></div>
+              <div><span>Peak kills / match</span><strong>{selectedPlayer.peakKillsInMatch}</strong></div>
+              <div><span>Primary faction</span><strong>{primaryFaction(selectedPlayer)}</strong></div>
+              <div><span>Servers played</span><strong>{serversPlayed(selectedPlayer)}</strong></div>
+            </div>
+
+            <div className="player-profile-meta">
+              <p><span>First seen</span>{formatLastSeen(selectedPlayer.firstSeen)}</p>
+              <p><span>Last seen</span>{formatLastSeen(selectedPlayer.lastSeen)}</p>
+              <p><span>Known aliases</span>{selectedPlayer.aliases?.length ? selectedPlayer.aliases.join(', ') : 'None recorded'}</p>
+            </div>
+          </article>
+        )}
+
+        <p className="stats-footnote">
+          Normal statistics combine Servers #1 and #2. Hardcore statistics are stored separately for Server #3, so kills, deaths, K/D and tracked time never mix between the two rule sets.
+        </p>
       </section>
     </>
   )

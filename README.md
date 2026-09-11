@@ -25,6 +25,7 @@ The website repo no longer contains or starts the Discord bots.
 - PHP 8.x for production status/proxy endpoints on OVH shared hosting
 - Optional Node.js/Express backend for local/VPS testing
 - Node.js WARDOGS player-stat collector/API
+- MariaDB for persistent player statistics
 
 ## Website development
 
@@ -68,17 +69,31 @@ Example FTP layout:
     ├── assets/
     └── api/
         ├── servers.php
+        ├── stats-source.php
         └── player-stats.php
 ```
 
-The confirmed WARDOGS RCON endpoints are:
+`servers.php` and the protected `stats-source.php` use the same server definitions in `wardogs-secrets.php`. This means Server #3 does not need a second copy of its Qonzer HTTP RCON URL/password on the VPS.
 
-```text
-Server #1: http://165.217.136.52:9001
-Server #2: http://165.217.136.99:9006
+The `stats-source.php` endpoint requires a private Bearer token configured as:
+
+```php
+'stats_source_token' => 'LONG_RANDOM_SECRET',
 ```
 
-The RCON bearer tokens must remain server-side only.
+Each server can explicitly declare its statistics pool:
+
+```php
+'statsGroup' => 'normal',
+```
+
+or:
+
+```php
+'statsGroup' => 'hardcore',
+```
+
+Servers #1 and #2 should be `normal`; Server #3 should be `hardcore`.
 
 ## Live server page
 
@@ -103,47 +118,95 @@ The website includes:
 /stats
 ```
 
-Persistent stats are collected by the Node.js service in:
+The stats page keeps the two rule sets separate:
 
 ```text
-server/stats/
+Normal   = Servers #1 + #2 combined
+Hardcore = Server #3 only
 ```
 
-It polls WARDOGS RCON `/v1/status` and `/v1/players`, persists observations to disk, and exposes a small HTTP API for the OVH PHP proxy.
+A Steam ID has one player identity and alias history, but independent Normal and Hardcore totals for kills, deaths, K/D, matches and tracked time.
 
-Start it on a VPS with:
+### MariaDB schema
+
+The complete schema is in:
+
+```text
+database/schema.sql
+```
+
+Create an empty database/user, select that database, then import `database/schema.sql`. The schema contains:
+
+- players and aliases
+- Normal/Hardcore group totals
+- per-server totals
+- faction totals
+- latest player snapshots used for delta calculation
+- current online state
+- tables reserved for durable match history / recent matches
+
+### Stats collector flow
+
+The VPS no longer needs copies of the individual WARDOGS RCON passwords.
+
+```text
+wardogs-secrets.php on OVH
+        ↓
+/api/stats-source.php (Bearer token protected)
+        ↓
+Node stats collector on VPS
+        ↓
+MariaDB
+        ↓
+Stats API on VPS
+        ↓
+/api/player-stats.php on OVH
+        ↓
+/stats
+```
+
+The collector reads `/v1/status` and `/v1/players` through the protected OVH source endpoint, calculates kill/death/playtime deltas, and writes the persistent totals to MariaDB. It does not store a new full database row every poll.
+
+Start the collector on the VPS with:
 
 ```bash
+npm install
 npm run start:stats
 ```
 
 Relevant `.env` settings:
 
 ```env
-WARDOGS_RCON_SERVER_1_URL=http://165.217.136.52:9001
-WARDOGS_RCON_SERVER_1_PASSWORD=
-WARDOGS_RCON_SERVER_2_URL=http://165.217.136.99:9006
-WARDOGS_RCON_SERVER_2_PASSWORD=
-
 WARDOGS_STATS_HOST=0.0.0.0
 WARDOGS_STATS_PORT=3100
 WARDOGS_STATS_POLL_MS=60000
-WARDOGS_STATS_FILE=./runtime/wardogs-player-stats.json
 WARDOGS_STATS_ALLOWED_ORIGIN=*
+
+WARDOGS_STATS_SOURCE_URL=https://YOUR-DOMAIN/api/stats-source.php
+WARDOGS_STATS_SOURCE_TOKEN=LONG_RANDOM_SECRET
+
+WARDOGS_DB_HOST=
+WARDOGS_DB_PORT=3306
+WARDOGS_DB_NAME=wardogs_stats
+WARDOGS_DB_USER=
+WARDOGS_DB_PASSWORD=
+WARDOGS_DB_CONNECTION_LIMIT=10
+WARDOGS_DB_SSL=false
+WARDOGS_DB_SSL_REJECT_UNAUTHORIZED=true
 ```
 
 The stats service exposes:
 
 ```text
 GET /health
-GET /api/stats/summary
-GET /api/stats/players
-GET /api/stats/players/:id
+GET /api/stats/summary?group=normal|hardcore
+GET /api/stats/players?group=normal|hardcore
+GET /api/stats/players/:id?group=normal|hardcore
 ```
 
 Statistics begin accumulating when the collector is started. Kill/death totals are derived from successive live RCON player snapshots and match resets; they represent activity observed on the 44th servers rather than global WARDOGS lifetime statistics.
 
-To connect the OVH `/stats` page to the VPS collector, add the public/reachable stats service URL to the private `wardogs-secrets.php` file:
+To connect the OVH `/stats` page to the VPS collector, set the public/reachable stats service URL in the private `wardogs-secrets.php` file:
 
 ```php
 'stats_api_url' => 'http://YOUR-VPS-IP:3100',
@@ -166,6 +229,8 @@ GET /api/health
 GET /api/servers
 ```
 
+The `WARDOGS_RCON_SERVER_*` `.env` values are retained only for this optional Node/local backend and RCON diagnostics. The production OVH website uses `wardogs-secrets.php`.
+
 RCON diagnostics:
 
 ```bash
@@ -186,7 +251,7 @@ The Discord bots are intentionally maintained separately from this website repo:
 https://github.com/Khade76/44th-wardogs-discord-bots
 ```
 
-That repo contains the two Node.js bot accounts, Discord presence updates, `/status`, `.env` configuration and AMP Node.js App Runner instructions.
+That repo contains the three Node.js bot accounts, Discord presence updates, `/status`, `.env` configuration and AMP Node.js App Runner instructions.
 
 ## Routes
 

@@ -10,6 +10,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "start": "node server/index.js",
+    "test:bisect": "node scripts/test-bisect.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

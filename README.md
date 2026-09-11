@@ -99,17 +99,17 @@ The diagnostic checks server details, resources, online players, and startup met
 
 The backend can query the WARDOGS `/v1/status` API directly and use it as the primary source for live match information. Bisect remains the infrastructure/fallback source.
 
-Configure each server on OVH only:
+The confirmed Bisect WARDOGS RCON endpoints are exposed over plain HTTP:
 
 ```env
-WARDOGS_RCON_SERVER_1_URL=https://165.217.136.52:RCON_PORT
+WARDOGS_RCON_SERVER_1_URL=http://165.217.136.52:9001
 WARDOGS_RCON_SERVER_1_PASSWORD=your-rcon-password
 
-WARDOGS_RCON_SERVER_2_URL=https://165.217.136.99:RCON_PORT
+WARDOGS_RCON_SERVER_2_URL=http://165.217.136.99:9006
 WARDOGS_RCON_SERVER_2_PASSWORD=your-rcon-password
 ```
 
-Remote RCON listeners must use HTTPS. The RCON password is a full-access bearer token, not a read-only key, so it must never be sent to the browser or committed to GitHub.
+The RCON password is a full-access bearer token, not a read-only key, so it must never be sent to the browser or committed to GitHub. Keep the RCON calls server-side on the OVH Node backend only.
 
 When RCON is available, `/api/servers` prefers its live values for:
 
@@ -129,7 +129,7 @@ Test the RCON connection from OVH with:
 npm run test:rcon
 ```
 
-That command calls `/v1/status` and `/v1/capabilities` for both configured servers and prints the responses. It does not print the RCON passwords.
+That command checks DNS/TCP, fingerprints the `/v1/status` endpoint, authenticates using the configured RCON password, then calls `/v1/status` and `/v1/capabilities`. It never prints the RCON passwords.
 
 ### Apache static hosting
 

@@ -1,5 +1,6 @@
 export const DISCORD_URL = 'https://discord.gg/44thwardogs'
 export const DONATE_URL = 'https://ko-fi.com/44thwardogs'
+export const OFFICER_PANEL_URL = 'https://panel.44thwardogs.com'
 export const STEAM_URL = 'https://store.steampowered.com/app/1867240/WARDOGS/'
 export const STEAM_LAUNCH_URL = 'steam://run/1867240'
 

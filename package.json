@@ -14,6 +14,7 @@
     "test:rcon": "node scripts/test-rcon.mjs",
     "probe:join-code": "node scripts/probe-join-code.mjs && node scripts/probe-bisect-console.mjs",
     "probe:join-console": "node scripts/probe-bisect-console.mjs",
+    "probe:join-public": "node scripts/probe-public-server-browser.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

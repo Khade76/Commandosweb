@@ -7,7 +7,41 @@ const PANEL_HOST = (process.env.BISECT_PANEL_HOST || 'https://games.bisecthostin
 const API_KEY = process.env.BISECT_API_KEY || ''
 const SIX_DIGIT = /\b\d{6}\b/g
 const GROUPED_SIX_DIGIT = /\b\d{3}(?:[-\s–—])\d{3}\b/g
-const INTERESTING = /(join|connect|register|registration|session|instance|invite|backend|game.?id|server.?id)/i
+
+const STRONG_CONTEXT = /(join(?:\s|-)?code|connect(?:ion)?(?:\s|-)?code|invite(?:\s|-)?code|registered game session|register(?:ed|ing)?(?:\s+\w+){0,3}\s+session|game.?session.?id|session.?id|instance.?id|pragma|gamelift|backend)/i
+const STARTUP_CONTEXT = /(bulkhead welcomes you|build:\s*\+\+wardogs|platform=linuxserver|machineid=|level.?load|starting|startup|server details|connection details|game session|updatesession|register|backend)/i
+const NOISE = /(LogWDServerAdmin:\s*Player Cash:|has connected\. Stats:|has disconnected\. Stats:|Player Joined:|PS_WDPlayerStateSession_C_|Not saving playerstate)/i
+
+function parseArgs() {
+  const args = process.argv.slice(2)
+  let server = null
+  let seconds = 30
+  let backlog = true
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]
+    if (arg === '--server' && args[i + 1]) {
+      server = Number(args[++i])
+    } else if (arg.startsWith('--server=')) {
+      server = Number(arg.split('=')[1])
+    } else if (arg === '--seconds' && args[i + 1]) {
+      seconds = Number(args[++i])
+    } else if (arg.startsWith('--seconds=')) {
+      seconds = Number(arg.split('=')[1])
+    } else if (arg === '--no-backlog') {
+      backlog = false
+    }
+  }
+
+  if (server !== null && (!Number.isInteger(server) || server < 1)) {
+    throw new Error('--server must be a positive integer (for example: --server 1)')
+  }
+  if (!Number.isFinite(seconds) || seconds < 5 || seconds > 900) {
+    throw new Error('--seconds must be between 5 and 900')
+  }
+
+  return { server, seconds, backlog }
+}
 
 function serverIds() {
   return String(process.env.BISECT_SERVER_IDS || process.env.BISECT_SERVER_UUID || '')
@@ -30,6 +64,15 @@ function codes(text) {
     found.add(match[0].replace(/\D/g, ''))
   }
   return [...found]
+}
+
+function candidateScore(line) {
+  let score = 1
+  if (/join(?:\s|-)?code|connect(?:ion)?(?:\s|-)?code|invite(?:\s|-)?code/i.test(line)) score += 10
+  if (/registered game session|register(?:ed|ing)?|session.?id|instance.?id/i.test(line)) score += 6
+  if (/pragma|gamelift|backend/i.test(line)) score += 4
+  if (STARTUP_CONTEXT.test(line)) score += 2
+  return score
 }
 
 async function panelRequest(path) {
@@ -111,7 +154,7 @@ function parseFrames(buffer, onFrame) {
   return buffer.subarray(offset)
 }
 
-function connectConsole(socketUrl, token, serverNumber, captureMs = 12000) {
+function connectConsole(socketUrl, token, serverNumber, { captureMs, backlog }) {
   return new Promise((resolve) => {
     const target = new URL(socketUrl)
     const secure = target.protocol === 'wss:'
@@ -130,6 +173,7 @@ function connectConsole(socketUrl, token, serverNumber, captureMs = 12000) {
     let handshakeDone = false
     let buffer = Buffer.alloc(0)
     let finished = false
+    let startupSeen = false
     const findings = []
 
     const finish = (reason) => {
@@ -180,7 +224,9 @@ function connectConsole(socketUrl, token, serverNumber, captureMs = 12000) {
         const status = lines.shift() || ''
         const headers = Object.fromEntries(lines.map((line) => {
           const colon = line.indexOf(':')
-          return colon === -1 ? [line.toLowerCase(), ''] : [line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim()]
+          return colon === -1
+            ? [line.toLowerCase(), '']
+            : [line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim()]
         }))
 
         if (!/^HTTP\/1\.1 101\b/.test(status)) {
@@ -216,26 +262,48 @@ function connectConsole(socketUrl, token, serverNumber, captureMs = 12000) {
 
         const event = String(message?.event || '')
         if (event === 'auth success') {
-          console.log('Authenticated. Requesting console backlog...')
-          socket.write(makeClientFrame(0x1, JSON.stringify({ event: 'send logs', args: [null] })))
+          console.log(backlog
+            ? 'Authenticated. Requesting console backlog and watching live output...'
+            : 'Authenticated. Watching live output only...')
+          if (backlog) {
+            socket.write(makeClientFrame(0x1, JSON.stringify({ event: 'send logs', args: [null] })))
+          }
           return
         }
         if (event !== 'console output') return
 
         const line = redact(Array.isArray(message.args) ? message.args.join(' ') : message.args)
-        const foundCodes = codes(line)
-        if (!INTERESTING.test(line) && !foundCodes.length) return
+        if (!line || NOISE.test(line)) return
 
-        console.log(`  ${line.slice(0, 600)}`)
+        const foundCodes = codes(line)
+        const strong = STRONG_CONTEXT.test(line)
+        const startup = STARTUP_CONTEXT.test(line)
+
+        if (startup && !startupSeen) {
+          startupSeen = true
+          console.log('  --- startup/session activity detected ---')
+        }
+
+        if (strong || startup || foundCodes.length) {
+          console.log(`  ${line.slice(0, 900)}`)
+        }
+
         for (const code of foundCodes) {
-          findings.push({ code, line, serverNumber })
+          findings.push({
+            code,
+            line,
+            serverNumber,
+            score: candidateScore(line),
+            strong,
+            startup,
+          })
         }
       })
     })
   })
 }
 
-async function probeServer(identifier, index) {
+async function probeServer(identifier, index, options) {
   const serverNumber = index + 1
   console.log(`\n=== Bisect console server ${serverNumber} (${identifier}) ===`)
 
@@ -250,7 +318,7 @@ async function probeServer(identifier, index) {
       return []
     }
     console.log(`WebSocket credentials: OK (${new URL(socketUrl).host})`)
-    return await connectConsole(socketUrl, token, serverNumber)
+    return await connectConsole(socketUrl, token, serverNumber, options)
   } catch (error) {
     console.log(`Console probe unavailable: ${error.message}`)
     return []
@@ -258,9 +326,12 @@ async function probeServer(identifier, index) {
 }
 
 async function main() {
+  const options = parseArgs()
+
   console.log('WARDOGS Bisect live-console join-code probe')
   console.log('Uses the official Starbase /websocket endpoint and reads console output only. No power or console commands are sent.')
   console.log('Join-code formats detected: 123456, 123-456, 123 456 (also en/em dash variants).')
+  console.log('Known false positives such as Player Cash and player-state/session spam are ignored.')
 
   if (!API_KEY) {
     console.error('BISECT_API_KEY is not configured.')
@@ -275,27 +346,55 @@ async function main() {
     return
   }
 
-  const all = []
-  for (let index = 0; index < ids.length; index += 1) {
-    all.push(...await probeServer(ids[index], index))
+  let selected = ids.map((identifier, index) => ({ identifier, index }))
+  if (options.server !== null) {
+    const hit = selected.find(({ index }) => index + 1 === options.server)
+    if (!hit) {
+      console.error(`Server ${options.server} is not configured. Available Bisect server numbers: ${selected.map(({ index }) => index + 1).join(', ')}`)
+      process.exitCode = 1
+      return
+    }
+    selected = [hit]
   }
 
-  console.log('\n=== Six-digit console candidates ===')
+  const captureMs = options.seconds * 1000
+  console.log(`Capture window: ${options.seconds}s per selected server. Backlog: ${options.backlog ? 'yes' : 'no'}.`)
+  if (options.server !== null) {
+    console.log(`Watching Bisect server ${options.server} only.`)
+  }
+
+  const all = []
+  for (const { identifier, index } of selected) {
+    all.push(...await probeServer(identifier, index, { captureMs, backlog: options.backlog }))
+  }
+
+  console.log('\n=== Join-code candidates after filtering ===')
   const grouped = new Map()
   for (const item of all) {
     const key = `${item.serverNumber}:${item.code}`
-    if (!grouped.has(key)) grouped.set(key, item)
+    const existing = grouped.get(key)
+    if (!existing || item.score > existing.score) grouped.set(key, item)
   }
 
-  if (!grouped.size) {
-    console.log('No six-digit values (including 123-456 style codes) were found in the console backlog/capture window.')
-    console.log('If the server has been up for a while, re-run this probe immediately before restarting one test server; it will watch the live startup output for 12 seconds per server.')
+  const ranked = [...grouped.values()]
+    .sort((a, b) => b.score - a.score)
+
+  if (!ranked.length) {
+    console.log('No six-digit values (including 123-456 style codes) survived the false-positive filters.')
+    console.log('For the decisive test, start this probe first and restart ONE server while it is watching:')
+    console.log('  npm run probe:join-console -- --server 1 --seconds 120 --no-backlog')
     return
   }
 
-  for (const item of grouped.values()) {
-    console.log(`Server ${item.serverNumber}: ${item.code}`)
-    console.log(`  ${item.line.slice(0, 500)}`)
+  for (const item of ranked.slice(0, 30)) {
+    console.log(`Server ${item.serverNumber}: ${item.code}  score=${item.score}${item.strong ? '  STRONG-CONTEXT' : ''}`)
+    console.log(`  ${item.line.slice(0, 800)}`)
+  }
+
+  const strong = ranked.filter((item) => item.strong)
+  if (!strong.length) {
+    console.log('\nNo candidate appeared next to join/connect/registration/session/backend context.')
+    console.log('The remaining values are clues only. A real join code should also change after the server restarts.')
   }
 }
 

@@ -6,36 +6,15 @@ return [
     'region' => 'Europe / UK',
     'include_training_server' => true,
 
-    // Player stats source. Leave as 'mariadb' until the WARCON public stats route is deployed,
-    // then change this to 'warcon'.
-    'stats_source' => 'mariadb',
-
-    // WARCON becomes the single source of truth when stats_source = 'warcon'.
-    // The same random API key must be set as PUBLIC_STATS_API_KEY in WARCON.
+    // WARCON/Postgres is the persistent player-stats source.
+    'stats_source' => 'warcon',
     'warcon' => [
-        'url' => 'http://CHANGE_ME_WARCON_HOST:3000',
-        'stats_api_key' => 'CHANGE_ME_TO_A_LONG_RANDOM_WARCON_STATS_KEY',
+        'url' => 'https://CHANGE_ME_WARCON_HOST',
+        'stats_api_key' => 'CHANGE_ME_TO_THE_SAME_PRIVATE_WARCON_STATS_KEY',
     ],
 
-    // Temporary MariaDB fallback while the WARCON integration is being deployed.
-    // These settings can be removed after WARCON is confirmed as the live stats source.
-    'stats_poll_seconds' => 60,
-
-    // Token used only to protect /api/collect-stats.php for the temporary MariaDB collector.
-    // It is NOT a WARDOGS/RCON token.
-    'stats_collect_token' => 'CHANGE_ME_TO_A_LONG_RANDOM_TOKEN',
-
-    'database' => [
-        'host' => 'CHANGE_ME_DB_HOST',
-        'port' => 3306,
-        'name' => 'CHANGE_ME_DB_NAME',
-        'user' => 'CHANGE_ME_DB_USER',
-        'password' => 'CHANGE_ME_DB_PASSWORD',
-        'charset' => 'utf8mb4',
-        // Optional: set this only if your DB host requires a CA file for TLS.
-        'ssl_ca' => '',
-    ],
-
+    // Website live-status/RCON connections. Stats grouping is NOT configured per server here;
+    // WARCON classifies Standard vs Hardcore from its recorded match map/experience data.
     'servers' => [
         [
             'id' => 'wardogs-278c7bc5',
@@ -44,7 +23,6 @@ return [
             'password' => 'CHANGE_ME_SERVER_1_RCON_PASSWORD',
             'joinId' => '175590',
             'maxPlayers' => 100,
-            'statsGroup' => 'normal',
         ],
         [
             'id' => 'wardogs-9290beb1',
@@ -53,17 +31,16 @@ return [
             'password' => 'CHANGE_ME_SERVER_2_RCON_PASSWORD',
             'joinId' => '294832',
             'maxPlayers' => 100,
-            'statsGroup' => 'normal',
         ],
         [
-            'id' => 'wardogs-hardcore',
-            'name' => '44th Commandos #3 | Hardcore',
-            'url' => 'CHANGE_ME_TO_SERVER_3_HTTP_RCON_URL',
+            // Server #3 is now another Bisect-hosted normal server. Replace these placeholders
+            // with the current Bisect allocation/RCON details in the live wardogs-secrets.php.
+            'id' => 'wardogs-CHANGE_ME_SERVER_3_BISECT_ID',
+            'name' => '44th Commandos #3',
+            'url' => 'http://CHANGE_ME_SERVER_3_BISECT_IP:CHANGE_ME_SERVER_3_RCON_PORT',
             'password' => 'CHANGE_ME_SERVER_3_RCON_PASSWORD',
             'maxPlayers' => 100,
-            'region' => 'Qonzer',
-            'address' => '216.144.249.76:7779',
-            'statsGroup' => 'hardcore',
+            'region' => 'Europe / UK',
         ],
     ],
 ];

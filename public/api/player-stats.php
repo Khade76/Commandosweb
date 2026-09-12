@@ -119,6 +119,7 @@ try {
         'limit' => $limit,
         'offset' => $offset,
     ]);
+    $result = wardogsStatsApplyRulesetServerCounts($pdo, $result, $group);
     $payload = array_merge($result, [
         'summary' => wardogsStatsSummary($pdo, $group),
         'source' => 'mariadb-fallback',

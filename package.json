@@ -12,6 +12,10 @@
     "start": "node server/index.js",
     "test:bisect": "node scripts/test-bisect.mjs",
     "test:rcon": "node scripts/test-rcon.mjs",
+    "probe:join-code": "node scripts/probe-join-code.mjs && node scripts/probe-bisect-console.mjs",
+    "probe:join-console": "node scripts/probe-bisect-console.mjs",
+    "probe:join-public": "node scripts/probe-public-server-browser.mjs",
+    "probe:join-client": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/probe-client-join-code.ps1",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

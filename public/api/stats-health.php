@@ -91,6 +91,7 @@ try {
             'stats_servers',
             'player_group_stats',
             'player_server_stats',
+            'player_server_group_stats',
             'player_faction_stats',
             'player_snapshots',
             'player_live_state',

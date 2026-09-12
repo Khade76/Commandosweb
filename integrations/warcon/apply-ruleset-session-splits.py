@@ -62,13 +62,13 @@ helper = r'''type PublicStatsGroup = 'normal' | 'hardcore';
  * Hardcore marker in the live map/experience identifiers (for example KOTH_Hardcore).
  */
 const statsGroupOfStatus = (status: Status): PublicStatsGroup => {
-	const values = [status.map, ...(status.experiences ?? [])];
-	return values.some((value) => String(value || '').toLowerCase().includes('hardcore'))
-		? 'hardcore'
-		: 'normal';
+\tconst values = [status.map, ...(status.experiences ?? [])];
+\treturn values.some((value) => String(value || '').toLowerCase().includes('hardcore'))
+\t\t? 'hardcore'
+\t\t: 'normal';
 };
 
-'''
+'''.replace(r'\t', '\t')
 observe = replace_once(
     observe,
     "// ---- the observation ----------------------------------------------------------------------------\n",
@@ -112,7 +112,7 @@ split_block = r'''\tif (!m.presence.loaded) await loadPresence(env.db, server.id
 \t}
 
 \t// Joins are trusted only when the previous look at the player list is recent enough that
-'''
+'''.replace(r'\t', '\t')
 observe = replace_once(
     observe,
     "\tif (!m.presence.loaded) await loadPresence(env.db, server.id, m.presence);\n\n\t// Joins are trusted only when the previous look at the player list is recent enough that\n",

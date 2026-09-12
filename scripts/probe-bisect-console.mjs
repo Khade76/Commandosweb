@@ -6,6 +6,7 @@ import tls from 'node:tls'
 const PANEL_HOST = (process.env.BISECT_PANEL_HOST || 'https://games.bisecthosting.com').replace(/\/$/, '')
 const API_KEY = process.env.BISECT_API_KEY || ''
 const SIX_DIGIT = /\b\d{6}\b/g
+const GROUPED_SIX_DIGIT = /\b\d{3}(?:[-\s–—])\d{3}\b/g
 const INTERESTING = /(join|connect|register|registration|session|instance|invite|backend|game.?id|server.?id)/i
 
 function serverIds() {
@@ -22,7 +23,13 @@ function redact(text) {
 }
 
 function codes(text) {
-  return [...new Set([...String(text || '').matchAll(SIX_DIGIT)].map((match) => match[0]))]
+  const value = String(text || '')
+  const found = new Set()
+  for (const match of value.matchAll(SIX_DIGIT)) found.add(match[0])
+  for (const match of value.matchAll(GROUPED_SIX_DIGIT)) {
+    found.add(match[0].replace(/\D/g, ''))
+  }
+  return [...found]
 }
 
 async function panelRequest(path) {
@@ -253,6 +260,7 @@ async function probeServer(identifier, index) {
 async function main() {
   console.log('WARDOGS Bisect live-console join-code probe')
   console.log('Uses the official Starbase /websocket endpoint and reads console output only. No power or console commands are sent.')
+  console.log('Join-code formats detected: 123456, 123-456, 123 456 (also en/em dash variants).')
 
   if (!API_KEY) {
     console.error('BISECT_API_KEY is not configured.')
@@ -280,7 +288,7 @@ async function main() {
   }
 
   if (!grouped.size) {
-    console.log('No six-digit values were found in the console backlog/capture window.')
+    console.log('No six-digit values (including 123-456 style codes) were found in the console backlog/capture window.')
     console.log('If the server has been up for a while, re-run this probe immediately before restarting one test server; it will watch the live startup output for 12 seconds per server.')
     return
   }

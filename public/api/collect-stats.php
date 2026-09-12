@@ -7,6 +7,7 @@ header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/stats-db.php';
+require_once __DIR__ . '/stats-grouping.php';
 
 function wardogsCollectRequestToken(): string
 {
@@ -49,7 +50,7 @@ try {
     }
 
     $pdo = wardogsStatsPdo($config);
-    $result = wardogsStatsCollect($pdo, $config);
+    $result = wardogsStatsCollectDynamic($pdo, $config);
     $payload = array_merge(['ok' => true], $result, ['generatedAt' => gmdate('c')]);
     echo json_encode($payload, JSON_UNESCAPED_SLASHES);
 } catch (Throwable $error) {

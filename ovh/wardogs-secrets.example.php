@@ -36,6 +36,11 @@ return [
         'ssl_ca' => '',
     ],
 
+    // Stats grouping is automatic and is based on each server's live /v1/status payload.
+    // If map/mode/experience contains "Hardcore" (for example KOTH_Hardcore), that poll is
+    // stored in the separate Hardcore stats group. Everything else is stored as Standard.
+    // This means Hardcore can run on any server without tying stats to a server number.
+    // Optional emergency override per server: 'statsGroupOverride' => 'normal' or 'hardcore'.
     'servers' => [
         [
             'id' => 'wardogs-278c7bc5',
@@ -44,7 +49,6 @@ return [
             'password' => 'CHANGE_ME_SERVER_1_RCON_PASSWORD',
             'joinId' => '175590',
             'maxPlayers' => 100,
-            'statsGroup' => 'normal',
         ],
         [
             'id' => 'wardogs-9290beb1',
@@ -53,17 +57,16 @@ return [
             'password' => 'CHANGE_ME_SERVER_2_RCON_PASSWORD',
             'joinId' => '294832',
             'maxPlayers' => 100,
-            'statsGroup' => 'normal',
         ],
         [
-            'id' => 'wardogs-hardcore',
-            'name' => '44th Commandos #3 | Hardcore',
-            'url' => 'CHANGE_ME_TO_SERVER_3_HTTP_RCON_URL',
+            // Server #3 is now another normal Bisect-hosted server. Replace these values
+            // with its current Bisect allocation/RCON details in the live wardogs-secrets.php.
+            'id' => 'wardogs-CHANGE_ME_SERVER_3_BISECT_ID',
+            'name' => '44th Commandos #3',
+            'url' => 'http://CHANGE_ME_SERVER_3_BISECT_IP:CHANGE_ME_SERVER_3_RCON_PORT',
             'password' => 'CHANGE_ME_SERVER_3_RCON_PASSWORD',
             'maxPlayers' => 100,
-            'region' => 'Qonzer',
-            'address' => '216.144.249.76:7779',
-            'statsGroup' => 'hardcore',
+            'region' => 'Europe / UK',
         ],
     ],
 ];

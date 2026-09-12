@@ -1,16 +1,21 @@
 # WARCON as the 44th website player-stats source
 
-This integration makes WARCON the persistent source of truth for `/stats` on `44thwardogs.com`.
+WARCON is the persistent source of truth for `/stats` on `44thwardogs.com`.
 
-## Why the small WARCON session change is included
+The website does not need a separate MariaDB collector when `stats_source` is set to `warcon`. WARCON stores player sessions and match history in its own Postgres/TimescaleDB database, and the website reads the API-key-protected public stats route.
 
-Stock WARCON already stores player presence, names, factions, join/leave times, matches and live data in Postgres/TimescaleDB. Its existing API is intended for signed-in panel users, so this integration adds one API-key-protected, read-only endpoint for the public website.
+## How Standard vs Hardcore is classified
 
-WARCON's stock `player_sessions.kills` / `deaths` values follow the live WARDOGS counters. Those counters reset when a match changes even if a player stays connected. `apply-session-deltas.py` adjusts WARCON's in-memory session tracking so the persisted values accumulate the counter deltas across match resets. No database migration is required.
+Stats are no longer tied to a server number.
 
-The installer checks exact upstream source blocks before changing them and stops if the installed WARCON version is incompatible. Running it again is safe.
+All three 44th servers are included in the same WARCON stats source list. The public stats route looks at the WARCON `matches` row that was active when a player session began:
 
-Existing completed WARCON sessions cannot reconstruct kills/deaths that were overwritten before this change was installed. New observations are cumulative after it is deployed.
+- if the match `map` or `experiences` contains `Hardcore` (for example `KOTH_Hardcore`), that session belongs to **Hardcore**;
+- otherwise it belongs to **Standard**.
+
+This means Server #1, #2 or #3 can host a Hardcore rotation later without changing the website configuration.
+
+Because WARCON player sessions can normally span several matches, `apply-ruleset-session-splits.py` closes/reopens the in-memory player session only when the live ruleset changes Standard <-> Hardcore. That keeps cumulative K/D on the correct ruleset even when a player stays connected through a rotation change. The split is internal stats bookkeeping and does not generate fake player-join triggers.
 
 ## 1. Apply cumulative session K/D tracking
 
@@ -28,9 +33,27 @@ A successful run prints:
 [44th WARCON] Applied cumulative kill/death session tracking.
 ```
 
-If WARCON upstream has changed in a way that makes the modification unsafe, the script exits without silently editing a different block.
+Running the script again is safe. If WARCON upstream has changed in a way that makes the modification unsafe, it exits rather than editing an unexpected block.
 
-## 2. Install the read-only stats route
+## 2. Apply dynamic ruleset session splitting
+
+Run this after the cumulative K/D patch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrations/warcon/apply-ruleset-session-splits.py \
+  -o /tmp/apply-ruleset-session-splits.py
+python3 /tmp/apply-ruleset-session-splits.py
+```
+
+A successful run prints:
+
+```text
+[44th WARCON] Applied dynamic Standard/Hardcore session splitting.
+```
+
+No WARCON database migration is required. Existing historical sessions are classified from the match that was active when each session began. Very old sessions that crossed Standard/Hardcore boundaries before this patch cannot be perfectly reconstructed; future ruleset changes are split correctly.
+
+## 3. Install the read-only stats route
 
 ```bash
 mkdir -p src/routes/api/public/player-stats
@@ -40,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrati
 
 The route only supports `GET` and requires a Bearer token. It exposes player statistics only; it does not expose admin actions, notes, bans, RCON passwords or WARCON sessions/cookies.
 
-## 3. Get the WARCON server IDs
+## 4. Get the WARCON server IDs
 
 From the WARCON directory:
 
@@ -49,17 +72,17 @@ docker compose exec -T db psql -U warcon -d warcon -P pager=off \
   -c "SELECT id, name FROM servers ORDER BY sort_order, name;"
 ```
 
-You need the IDs for:
+Use the WARCON IDs for all three current 44th servers:
 
 - 44th Commandos #1
 - 44th Commandos #2
-- 44th Commandos #3 / Hardcore
+- 44th Commandos #3
 
-The endpoint also accepts exact WARCON server names in the environment variables, but IDs are preferred because names may change.
+The route also accepts exact WARCON server names, but IDs are preferred because names may change.
 
-## 4. Add the WARCON environment settings
+## 5. Add/update the WARCON environment settings
 
-Generate a new long random token. Example from PowerShell:
+Generate a long random token if one is not already configured. Example from PowerShell:
 
 ```powershell
 $bytes = New-Object byte[] 32
@@ -67,21 +90,20 @@ $bytes = New-Object byte[] 32
 [Convert]::ToHexString($bytes)
 ```
 
-Add the following to WARCON's `.env`:
+WARCON `.env` should contain:
 
 ```env
 WARDOGS_STATS_API_KEY=PASTE_THE_RANDOM_TOKEN
-WARDOGS_STATS_NORMAL_SERVERS=SERVER_1_ID,SERVER_2_ID
-WARDOGS_STATS_HARDCORE_SERVERS=SERVER_3_ID
+WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID
 ```
 
-Do not prefix the private stats values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for values that may be exposed to client-side code, while this API key must remain server-only.
+`WARDOGS_STATS_SERVERS` replaces the old fixed `WARDOGS_STATS_NORMAL_SERVERS` / `WARDOGS_STATS_HARDCORE_SERVERS` split. The updated route still reads the old variables as a migration fallback, but they should be removed after `WARDOGS_STATS_SERVERS` is confirmed.
 
-The server lists may contain either WARCON server IDs or exact server names.
+Do not prefix the private values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for client-exposed configuration, while this API key must remain server-only.
 
-## 5. Rebuild WARCON
+## 6. Rebuild WARCON
 
-The standard WARCON Docker Compose file builds from the local checkout, so rebuild after installing the route/session change:
+The standard WARCON Docker Compose file builds from the local checkout, so rebuild after applying the patches and installing the route:
 
 ```bash
 docker compose up -d --build
@@ -93,7 +115,7 @@ Then check the containers:
 docker compose ps
 ```
 
-## 6. Test WARCON directly
+## 7. Test WARCON directly
 
 From the WARCON VPS:
 
@@ -124,9 +146,11 @@ curl -sS \
   'http://127.0.0.1:3000/api/public/player-stats?group=hardcore&limit=5'
 ```
 
-## 7. Point the OVH website at WARCON
+Hardcore may legitimately be empty while none of the configured servers has recorded a Hardcore-tagged match.
 
-In the private `wardogs-secrets.php` above `/www`, add/update:
+## 8. Website configuration
+
+The private `wardogs-secrets.php` above `/www` should keep WARCON selected:
 
 ```php
 'stats_source' => 'warcon',
@@ -137,11 +161,11 @@ In the private `wardogs-secrets.php` above `/www`, add/update:
 ],
 ```
 
-Use a WARCON URL that the OVH web host can reach. If port 3000 is not intentionally public, use the existing HTTPS/reverse-proxy hostname.
-
 The browser never receives the WARCON API key. `/api/player-stats.php` on OVH adds it server-side.
 
-## 8. Verify the website source
+Server #3's website/RCON status entry also needs to contain its new Bisect connection details now that it is no longer hosted by Qonzer. That is separate from WARCON stats grouping.
+
+## 9. Verify the website source
 
 Open:
 
@@ -161,8 +185,4 @@ Then test:
 https://44thwardogs.com/api/player-stats.php?group=hardcore&limit=5
 ```
 
-Finally open `/stats` and verify Normal and Hardcore remain separate.
-
-## Temporary MariaDB fallback
-
-Until `stats_source` is changed to `warcon`, the website continues using the MariaDB collector already configured on OVH. Once WARCON is confirmed as the live source, the MariaDB collector/schema can be removed in a follow-up cleanup.
+Finally open `/stats`. The tabs should describe **Standard** and **Hardcore rulesets**, not specific server numbers.

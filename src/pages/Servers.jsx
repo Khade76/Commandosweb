@@ -5,6 +5,26 @@ import './servers-extra.css'
 const SERVERS_API_URL = import.meta.env.VITE_SERVERS_API_URL
   || (import.meta.env.PROD ? '/api/servers.php' : '/api/servers')
 
+const WARCON_MAP_ART_BASE = 'https://raw.githubusercontent.com/warcon-app/warcon/main/static/maps'
+const MAP_ART_DIRECTORIES = Object.freeze({
+  Kavkazi: 'Kavkazi',
+  Bakurani: 'Kavkazi',
+  Europe: 'Europe',
+  Ozeti: 'Europe',
+  NorthAmerica: 'NorthAmerica',
+  Zestafona: 'NorthAmerica',
+})
+const MAP_ART_LIGHTING = new Set([
+  'DayStartClear',
+  'DayEarlyClear',
+  'DayEarlyFog',
+  'DayClear',
+  'DayLateClear',
+  'DayLateGray',
+  'DayLateGrayFog',
+  'DayEndClear',
+])
+
 const FACTIONS = [
   { key: 'valkyra', label: 'Valkyra', icon: '/assets/factions/valkyra.png' },
   { key: 'lonestar', label: 'Lonestar', icon: '/assets/factions/lonestar.png' },
@@ -20,6 +40,57 @@ function statusTone(status) {
   if (value.startsWith('online') || value === 'running') return 'online'
   if (['starting', 'booting', 'installing', 'restarting'].includes(value)) return 'starting'
   return 'offline'
+}
+
+function mapArtSources(server) {
+  const map = String(server?.map || '').trim()
+  const directory = MAP_ART_DIRECTORIES[map]
+  if (!directory) return null
+
+  const requestedLighting = String(server?.lighting || '').trim()
+  const lighting = MAP_ART_LIGHTING.has(requestedLighting) ? requestedLighting : 'DayClear'
+  const base = `${WARCON_MAP_ART_BASE}/${encodeURIComponent(directory)}`
+
+  return {
+    primary: `${base}/${encodeURIComponent(lighting)}-720.webp`,
+    fallback: lighting === 'DayClear' ? '' : `${base}/DayClear-720.webp`,
+    alt: `${map} WARDOGS map preview${server?.lighting ? ` — ${server.lighting}` : ''}`,
+  }
+}
+
+function ServerMapArt({ server }) {
+  const art = mapArtSources(server)
+  if (!art) return null
+
+  function handleImageError(event) {
+    const image = event.currentTarget
+    const fallback = image.dataset.fallback
+
+    if (fallback) {
+      image.dataset.fallback = ''
+      image.src = fallback
+      return
+    }
+
+    image.closest('.server-map-art')?.setAttribute('hidden', '')
+  }
+
+  return (
+    <figure className="server-map-art">
+      <img
+        src={art.primary}
+        data-fallback={art.fallback}
+        alt={art.alt}
+        loading="lazy"
+        onError={handleImageError}
+      />
+      <figcaption>
+        <span>{server.map}</span>
+        {server.lighting && <span>{server.lighting}</span>}
+        <small>Map imagery © BULKHEAD · mirrored by WARCON</small>
+      </figcaption>
+    </figure>
+  )
 }
 
 function mergeServerDirectory(liveServers) {
@@ -107,6 +178,7 @@ export default function Servers() {
                   <small>{server.region}</small>
                 </div>
                 <h3>{server.name}</h3>
+                <ServerMapArt server={server} />
                 <div className="server-stats">
                   <div><span>Players</span><strong>{server.players}</strong></div>
                   <div><span>Map</span><strong>{server.map}</strong></div>
@@ -143,7 +215,7 @@ export default function Servers() {
       </section>
       <section className="section cards-three">
         <article><span>JOIN</span><h3>Join Server</h3><p>Use the Join Server button to launch WARDOGS through Steam and copy the correct server ID automatically.</p></article>
-        <article><span>MATCH</span><h3>Map & scores</h3><p>Current map and Valkyra, Lonestar and Manticore scores are pulled from the live WARDOGS RCON status.</p></article>
+        <article><span>MATCH</span><h3>Map & scores</h3><p>Current map, matching map artwork and Valkyra, Lonestar and Manticore scores are pulled from the live WARDOGS status.</p></article>
         <article><span>OPS</span><h3>Built to expand</h3><p>The server API is structured so additional hosts and WARDOGS services can be added without rebuilding this page.</p></article>
       </section>
     </>

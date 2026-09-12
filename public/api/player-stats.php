@@ -14,6 +14,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 }
 
 require_once __DIR__ . '/stats-db.php';
+require_once __DIR__ . '/stats-grouping.php';
 
 $allowedSorts = ['kills', 'deaths', 'kd', 'time', 'matches', 'lastSeen', 'name'];
 $allowedGroups = ['normal', 'hardcore'];
@@ -110,7 +111,7 @@ try {
 
     // Temporary fallback while WARCON public stats is being deployed.
     $pdo = wardogsStatsPdo($config);
-    wardogsStatsMaybeCollect($pdo, $config);
+    wardogsStatsMaybeCollectDynamic($pdo, $config);
     $result = wardogsStatsPlayers($pdo, [
         'group' => $group,
         'search' => $search,

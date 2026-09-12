@@ -12,6 +12,7 @@
     "start": "node server/index.js",
     "test:bisect": "node scripts/test-bisect.mjs",
     "test:rcon": "node scripts/test-rcon.mjs",
+    "probe:join-code": "node scripts/probe-join-code.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

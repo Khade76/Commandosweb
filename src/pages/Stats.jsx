@@ -4,8 +4,13 @@ import { images } from '../data/site.js'
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
 
 const GROUP_LABELS = {
-  normal: 'Normal Servers',
+  normal: 'Standard',
   hardcore: 'Hardcore',
+}
+
+const GROUP_DESCRIPTIONS = {
+  normal: 'All standard rotations across Servers #1, #2 + #3',
+  hardcore: 'Any rotation whose live mode, map or experience is tagged Hardcore',
 }
 
 function formatDuration(seconds) {
@@ -124,7 +129,7 @@ export default function Stats() {
       </section>
 
       <section className="section stats-page">
-        <div className="stats-group-switch" aria-label="Stats server group">
+        <div className="stats-group-switch" aria-label="Stats ruleset group">
           {Object.entries(GROUP_LABELS).map(([key, label]) => (
             <button
               key={key}
@@ -133,7 +138,7 @@ export default function Stats() {
               onClick={() => setGroup(key)}
             >
               <span>{label}</span>
-              <small>{key === 'normal' ? 'Servers #1 + #2 combined' : 'Server #3 only'}</small>
+              <small>{GROUP_DESCRIPTIONS[key]}</small>
             </button>
           ))}
         </div>
@@ -248,7 +253,7 @@ export default function Stats() {
         )}
 
         <p className="stats-footnote">
-          Normal statistics combine Servers #1 and #2. Hardcore statistics are stored separately for Server #3, so kills, deaths, K/D and tracked time never mix between the two rule sets.
+          Standard statistics combine every normal rotation across the 44th servers. If the live WARDOGS map, mode or experience contains the Hardcore tag, that activity is automatically stored in the separate Hardcore stats group regardless of which server is hosting it.
         </p>
       </section>
     </>

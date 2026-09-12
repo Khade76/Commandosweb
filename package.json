@@ -13,6 +13,7 @@
     "test:bisect": "node scripts/test-bisect.mjs",
     "test:rcon": "node scripts/test-rcon.mjs",
     "probe:join-code": "node scripts/probe-join-code.mjs",
+    "probe:join-console": "node scripts/probe-bisect-console.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

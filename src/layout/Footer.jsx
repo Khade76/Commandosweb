@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { DISCORD_URL, DONATE_URL, STEAM_URL, images } from '../data/site.js'
+import { DISCORD_URL, DONATE_URL, OFFICER_PANEL_URL, STEAM_URL, images } from '../data/site.js'
 
 export default function Footer() {
   return (
@@ -16,6 +16,7 @@ export default function Footer() {
           <Link to="/servers">Our Servers</Link>
           <Link to="/enlist">Enlist</Link>
           <Link to="/rules">Rules</Link>
+          <a href={OFFICER_PANEL_URL} target="_blank" rel="noreferrer">Officer Panel ↗</a>
           <a href={DONATE_URL} target="_blank" rel="noreferrer">Donate</a>
           <a href={DISCORD_URL} target="_blank" rel="noreferrer">Discord</a>
           <a href={STEAM_URL} target="_blank" rel="noreferrer">Steam</a>

@@ -7,6 +7,7 @@ header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/stats-db.php';
+require_once __DIR__ . '/stats-grouping.php';
 
 function wardogsHealthToken(): string
 {
@@ -120,11 +121,10 @@ try {
         $serverNumber = (int)$index + 1;
         $baseUrl = rtrim((string)($server['url'] ?? ''), '/');
         $password = (string)($server['password'] ?? '');
-        $defaultGroup = $serverNumber === 3 ? 'hardcore' : 'normal';
         $entry = [
             'server' => $serverNumber,
             'name' => (string)($server['name'] ?? ('WARDOGS Server #' . $serverNumber)),
-            'group' => wardogsStatsGroup($server['statsGroup'] ?? null, $defaultGroup),
+            'group' => null,
             'configured' => $baseUrl !== '' && $password !== '' && !str_contains($password, 'CHANGE_ME'),
             'status' => false,
             'players' => false,
@@ -141,6 +141,10 @@ try {
             $status = wardogsStatsFetchJson($baseUrl . '/v1/status', $password);
             $entry['status'] = true;
             $entry['map'] = $status['map'] ?? null;
+            $entry['experiences'] = is_array($status['experiences'] ?? null)
+                ? array_values(array_map('strval', $status['experiences']))
+                : [];
+            $entry['group'] = wardogsStatsDetectGroup($server, $status);
         } catch (Throwable $error) {
             $entry['error'] = 'Status: ' . $error->getMessage();
             $result['ok'] = false;

@@ -23,15 +23,24 @@ function groupFrom(value: string | null): StatsGroup {
 	return value === 'hardcore' ? 'hardcore' : 'normal';
 }
 
-function configuredServerRefs(group: StatsGroup): string[] {
-	const raw =
-		group === 'hardcore'
-			? privateEnv.WARDOGS_STATS_HARDCORE_SERVERS
-			: privateEnv.WARDOGS_STATS_NORMAL_SERVERS;
-	return (raw || '')
+/**
+ * All 44th servers participate in both stats groups. The ruleset is resolved from WARCON's
+ * match history, not from a fixed server number. The old NORMAL/HARDCORE variables remain as a
+ * migration fallback so an existing deployment keeps working until WARDOGS_STATS_SERVERS is set.
+ */
+function configuredServerRefs(): string[] {
+	const explicit = (privateEnv.WARDOGS_STATS_SERVERS || '').trim();
+	const legacy = [
+		privateEnv.WARDOGS_STATS_NORMAL_SERVERS || '',
+		privateEnv.WARDOGS_STATS_HARDCORE_SERVERS || ''
+	]
+		.filter(Boolean)
+		.join(',');
+
+	return [...new Set((explicit || legacy)
 		.split(',')
 		.map((value) => value.trim())
-		.filter(Boolean);
+		.filter(Boolean))];
 }
 
 function finite(value: unknown): number {
@@ -57,8 +66,8 @@ export const GET = route(async (event) => {
 
 	const env = getEnv();
 	const group = groupFrom(event.url.searchParams.get('group'));
-	const refs = configuredServerRefs(group);
-	if (!refs.length) throw new ApiError(503, `No ${group} servers are configured for public stats.`);
+	const refs = configuredServerRefs();
+	if (!refs.length) throw new ApiError(503, 'No WARDOGS servers are configured for public stats.');
 
 	const serverRows = await env.db.execute<{ id: string; name: string }>(sql`
 		SELECT id, name FROM servers WHERE id IN ${refs} OR name IN ${refs}
@@ -104,6 +113,44 @@ export const GET = route(async (event) => {
 								? sql`name ASC`
 								: sql`a.total_kills DESC, a.total_deaths ASC`;
 
+	// A session belongs to the ruleset of the WARCON match active when that session began.
+	// apply-ruleset-session-splits.py makes a new session whenever the live ruleset flips, so a
+	// player who stays connected across Standard -> Hardcore does not move their earlier totals.
+	const classifiedSessions = sql`
+		SELECT
+			ps.*,
+			srv.name AS server_name,
+			CASE
+				WHEN LOWER(COALESCE(match_at_join.map, '')) LIKE '%hardcore%'
+					OR LOWER(COALESCE(match_at_join.experiences, '')) LIKE '%hardcore%'
+				THEN 'hardcore'
+				ELSE 'normal'
+			END AS stats_group
+		FROM player_sessions ps
+		INNER JOIN servers srv ON srv.id = ps.server_id
+		LEFT JOIN LATERAL (
+			SELECT m.map, m.experiences
+			FROM matches m
+			WHERE m.server_id = ps.server_id
+				AND m.started_at <= ps.joined_at
+				AND COALESCE(m.ended_at, 'infinity'::timestamptz) >= ps.joined_at
+			ORDER BY m.started_at DESC
+			LIMIT 1
+		) match_at_join ON true
+		WHERE ps.server_id IN ${serverIds}
+	`;
+
+	const matchGroupFilter =
+		group === 'hardcore'
+			? sql`(
+				LOWER(COALESCE(m.map, '')) LIKE '%hardcore%'
+				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
+			)`
+			: sql`NOT (
+				LOWER(COALESCE(m.map, '')) LIKE '%hardcore%'
+				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
+			)`;
+
 	const rows = await env.db.execute<{
 		steamId: string;
 		name: string;
@@ -123,11 +170,9 @@ export const GET = route(async (event) => {
 		serverCounts: unknown;
 		serversPlayed: unknown;
 	}>(sql`
-		WITH scoped AS (
-			SELECT ps.*, srv.name AS server_name
-			FROM player_sessions ps
-			INNER JOIN servers srv ON srv.id = ps.server_id
-			WHERE ps.server_id IN ${serverIds}
+		WITH classified AS (${classifiedSessions}),
+		scoped AS (
+			SELECT * FROM classified WHERE stats_group = ${group}
 		),
 		player_matches AS (
 			SELECT ps.steam_id, COUNT(DISTINCT m.id)::bigint AS matches_seen
@@ -136,6 +181,7 @@ export const GET = route(async (event) => {
 				ON m.server_id = ps.server_id
 				AND m.started_at <= COALESCE(ps.left_at, now())
 				AND COALESCE(m.ended_at, now()) >= ps.joined_at
+				AND ${matchGroupFilter}
 			GROUP BY ps.steam_id
 		),
 		a AS (
@@ -203,9 +249,8 @@ export const GET = route(async (event) => {
 	`);
 
 	const [countRow] = await env.db.execute<{ total: string | number }>(sql`
-		WITH scoped AS (
-			SELECT ps.* FROM player_sessions ps WHERE ps.server_id IN ${serverIds}
-		)
+		WITH classified AS (${classifiedSessions}),
+		scoped AS (SELECT * FROM classified WHERE stats_group = ${group})
 		SELECT COUNT(DISTINCT s.steam_id)::bigint AS total
 		FROM scoped s
 		WHERE ${searchFilter}
@@ -219,6 +264,8 @@ export const GET = route(async (event) => {
 		secondsTracked: string | number;
 		updatedAt: Date | null;
 	}>(sql`
+		WITH classified AS (${classifiedSessions}),
+		scoped AS (SELECT * FROM classified WHERE stats_group = ${group})
 		SELECT
 			COUNT(DISTINCT steam_id)::bigint AS "trackedPlayers",
 			COUNT(DISTINCT steam_id) FILTER (WHERE left_at IS NULL)::bigint AS "onlinePlayers",
@@ -226,7 +273,7 @@ export const GET = route(async (event) => {
 			COALESCE(SUM(deaths), 0)::bigint AS "totalDeaths",
 			COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - joined_at))), 0)::bigint AS "secondsTracked",
 			MAX(last_seen) AS "updatedAt"
-		FROM player_sessions WHERE server_id IN ${serverIds}
+		FROM scoped
 	`);
 
 	const players = rows.map((row) => {

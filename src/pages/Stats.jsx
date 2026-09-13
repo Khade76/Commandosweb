@@ -82,6 +82,7 @@ function comparisonValue(metric, player) {
 
 export default function Stats() {
   const [players, setPlayers] = useState([])
+  const [comparisonPool, setComparisonPool] = useState([])
   const [summary, setSummary] = useState(null)
   const [group, setGroup] = useState('normal')
   const [search, setSearch] = useState('')
@@ -99,6 +100,37 @@ export default function Stats() {
   useEffect(() => {
     setCompareId('')
   }, [selectedId])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
+    const loadComparisonPool = async () => {
+      const params = new URLSearchParams({
+        group,
+        sort: 'kills',
+        limit: '500',
+      })
+
+      try {
+        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
+        if (!cancelled) setComparisonPool(Array.isArray(payload?.players) ? payload.players : [])
+      } catch (fetchError) {
+        if (!cancelled && fetchError.name !== 'AbortError') setComparisonPool([])
+      }
+    }
+
+    loadComparisonPool()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [group])
 
   useEffect(() => {
     let cancelled = false
@@ -160,38 +192,40 @@ export default function Stats() {
   }, [summary])
 
   const selectedPlayer = useMemo(
-    () => players.find((player) => player.id === selectedId) || null,
-    [players, selectedId],
+    () => comparisonPool.find((player) => player.id === selectedId)
+      || players.find((player) => player.id === selectedId)
+      || null,
+    [comparisonPool, players, selectedId],
   )
 
   const comparisonPlayer = useMemo(
-    () => players.find((player) => player.id === compareId) || null,
-    [players, compareId],
+    () => comparisonPool.find((player) => player.id === compareId) || null,
+    [comparisonPool, compareId],
   )
 
   const rankings = useMemo(() => {
     if (!selectedPlayer) return null
     return {
-      kills: rankMetric(players, selectedPlayer, (player) => player.totalKills),
-      kd: rankMetric(players, selectedPlayer, (player) => player.kd),
-      matches: rankMetric(players, selectedPlayer, (player) => player.matchesSeen),
-      time: rankMetric(players, selectedPlayer, (player) => player.secondsTracked),
+      kills: rankMetric(comparisonPool, selectedPlayer, (player) => player.totalKills),
+      kd: rankMetric(comparisonPool, selectedPlayer, (player) => player.kd),
+      matches: rankMetric(comparisonPool, selectedPlayer, (player) => player.matchesSeen),
+      time: rankMetric(comparisonPool, selectedPlayer, (player) => player.secondsTracked),
     }
-  }, [players, selectedPlayer])
+  }, [comparisonPool, selectedPlayer])
 
   const averages = useMemo(() => ({
-    kills: average(players, (player) => player.totalKills),
-    deaths: average(players, (player) => player.totalDeaths),
-    kd: average(players, (player) => player.kd),
-    matchesSeen: average(players, (player) => player.matchesSeen),
-    secondsTracked: average(players, (player) => player.secondsTracked),
-  }), [players])
+    kills: average(comparisonPool, (player) => player.totalKills),
+    deaths: average(comparisonPool, (player) => player.totalDeaths),
+    kd: average(comparisonPool, (player) => player.kd),
+    matchesSeen: average(comparisonPool, (player) => player.matchesSeen),
+    secondsTracked: average(comparisonPool, (player) => player.secondsTracked),
+  }), [comparisonPool])
 
   const compareOptions = useMemo(
-    () => players
+    () => comparisonPool
       .filter((player) => player.id !== selectedId)
       .sort((a, b) => String(a.name).localeCompare(String(b.name))),
-    [players, selectedId],
+    [comparisonPool, selectedId],
   )
 
   return (

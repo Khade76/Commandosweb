@@ -4,13 +4,13 @@ import { images } from '../data/site.js'
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
 
 const GROUP_LABELS = {
-  normal: 'Standard',
+  normal: 'Normal',
   hardcore: 'Hardcore',
 }
 
 const GROUP_DESCRIPTIONS = {
-  normal: 'All standard rotations across Servers #1, #2 + #3',
-  hardcore: 'Any rotation whose live map or experience is tagged Hardcore',
+  normal: 'Normal WARDOGS rotations',
+  hardcore: 'Hardcore WARDOGS rotations',
 }
 
 function formatDuration(seconds) {
@@ -45,6 +45,41 @@ function serversPlayed(player) {
     .join(', ') || '—'
 }
 
+function average(players, accessor) {
+  const values = players
+    .map(accessor)
+    .map(Number)
+    .filter(Number.isFinite)
+  if (!values.length) return 0
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function rankMetric(players, player, accessor) {
+  if (!player || !players.length) return null
+  const ranked = players
+    .map((entry) => ({ id: entry.id, value: Number(accessor(entry)) }))
+    .filter((entry) => Number.isFinite(entry.value))
+    .sort((a, b) => b.value - a.value)
+
+  const index = ranked.findIndex((entry) => entry.id === player.id)
+  if (index < 0) return null
+
+  const rank = index + 1
+  const total = ranked.length
+  return {
+    rank,
+    total,
+    topPercent: Math.max(1, Math.ceil((rank / total) * 100)),
+  }
+}
+
+function comparisonValue(metric, player) {
+  if (!player) return '—'
+  if (metric === 'time') return formatDuration(player.secondsTracked)
+  if (metric === 'kd') return Number(player.kd || 0).toFixed(2)
+  return player[metric] ?? '—'
+}
+
 export default function Stats() {
   const [players, setPlayers] = useState([])
   const [summary, setSummary] = useState(null)
@@ -52,12 +87,18 @@ export default function Stats() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('kills')
   const [selectedId, setSelectedId] = useState(null)
+  const [compareId, setCompareId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
     setSelectedId(null)
+    setCompareId('')
   }, [group])
+
+  useEffect(() => {
+    setCompareId('')
+  }, [selectedId])
 
   useEffect(() => {
     let cancelled = false
@@ -67,10 +108,11 @@ export default function Stats() {
       setLoading(true)
       setError('')
 
+      const apiSort = sort === 'nameDesc' ? 'name' : sort
       const params = new URLSearchParams({
         group,
-        sort,
-        limit: '200',
+        sort: apiSort,
+        limit: '500',
       })
       if (search.trim()) params.set('search', search.trim())
 
@@ -107,6 +149,11 @@ export default function Stats() {
     }
   }, [group, search, sort])
 
+  const displayedPlayers = useMemo(
+    () => sort === 'nameDesc' ? [...players].reverse() : players,
+    [players, sort],
+  )
+
   const totalHours = useMemo(() => {
     const seconds = Number(summary?.secondsTracked)
     return Number.isFinite(seconds) ? Math.round(seconds / 3600) : 0
@@ -114,6 +161,36 @@ export default function Stats() {
 
   const selectedPlayer = useMemo(
     () => players.find((player) => player.id === selectedId) || null,
+    [players, selectedId],
+  )
+
+  const comparisonPlayer = useMemo(
+    () => players.find((player) => player.id === compareId) || null,
+    [players, compareId],
+  )
+
+  const rankings = useMemo(() => {
+    if (!selectedPlayer) return null
+    return {
+      kills: rankMetric(players, selectedPlayer, (player) => player.totalKills),
+      kd: rankMetric(players, selectedPlayer, (player) => player.kd),
+      matches: rankMetric(players, selectedPlayer, (player) => player.matchesSeen),
+      time: rankMetric(players, selectedPlayer, (player) => player.secondsTracked),
+    }
+  }, [players, selectedPlayer])
+
+  const averages = useMemo(() => ({
+    kills: average(players, (player) => player.totalKills),
+    deaths: average(players, (player) => player.totalDeaths),
+    kd: average(players, (player) => player.kd),
+    matchesSeen: average(players, (player) => player.matchesSeen),
+    secondsTracked: average(players, (player) => player.secondsTracked),
+  }), [players])
+
+  const compareOptions = useMemo(
+    () => players
+      .filter((player) => player.id !== selectedId)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name))),
     [players, selectedId],
   )
 
@@ -164,7 +241,8 @@ export default function Stats() {
               <option value="time">Time tracked</option>
               <option value="matches">Matches seen</option>
               <option value="lastSeen">Last seen</option>
-              <option value="name">Name</option>
+              <option value="name">Name A–Z</option>
+              <option value="nameDesc">Name Z–A</option>
             </select>
           </label>
         </div>
@@ -192,7 +270,7 @@ export default function Stats() {
                 </tr>
               </thead>
               <tbody>
-                {players.map((player) => (
+                {displayedPlayers.map((player) => (
                   <tr key={player.id} className={selectedId === player.id ? 'selected' : undefined}>
                     <td>
                       <button className="stats-player-link" type="button" onClick={() => setSelectedId(player.id)}>
@@ -239,7 +317,7 @@ export default function Stats() {
               <div><span>K/D</span><strong>{selectedPlayer.kd}</strong></div>
               <div><span>Matches seen</span><strong>{selectedPlayer.matchesSeen}</strong></div>
               <div><span>Tracked time</span><strong>{formatDuration(selectedPlayer.secondsTracked)}</strong></div>
-              <div><span>Peak kills / match</span><strong>{selectedPlayer.peakKillsInMatch}</strong></div>
+              <div><span>Peak kills / match</span><strong>{selectedPlayer.peakKillsInMatch ?? '—'}</strong></div>
               <div><span>Primary faction</span><strong>{primaryFaction(selectedPlayer)}</strong></div>
               <div><span>Servers played</span><strong>{serversPlayed(selectedPlayer)}</strong></div>
             </div>
@@ -249,11 +327,83 @@ export default function Stats() {
               <p><span>Last seen</span>{formatLastSeen(selectedPlayer.lastSeen)}</p>
               <p><span>Known aliases</span>{selectedPlayer.aliases?.length ? selectedPlayer.aliases.join(', ') : 'None recorded'}</p>
             </div>
+
+            <section className="player-comparison-section">
+              <div className="player-comparison-heading">
+                <div>
+                  <p className="kicker">Player Comparison</p>
+                  <h3>How {selectedPlayer.name} compares</h3>
+                </div>
+                <label>
+                  <span>Compare directly with</span>
+                  <select value={compareId} onChange={(event) => setCompareId(event.target.value)}>
+                    <option value="">Community average</option>
+                    {compareOptions.map((player) => (
+                      <option key={player.id} value={player.id}>{player.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="player-rank-grid">
+                {[
+                  ['Kills', rankings?.kills],
+                  ['K/D', rankings?.kd],
+                  ['Matches', rankings?.matches],
+                  ['Tracked time', rankings?.time],
+                ].map(([label, rank]) => (
+                  <div key={label}>
+                    <span>{label} rank</span>
+                    <strong>{rank ? `#${rank.rank} of ${rank.total}` : '—'}</strong>
+                    <small>{rank ? `Top ${rank.topPercent}%` : 'Not ranked'}</small>
+                  </div>
+                ))}
+              </div>
+
+              <div className="player-comparison-table-wrap">
+                <table className="player-comparison-table">
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      <th>{selectedPlayer.name}</th>
+                      <th>{comparisonPlayer?.name || 'Community avg.'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Kills</td>
+                      <td>{selectedPlayer.totalKills}</td>
+                      <td>{comparisonPlayer ? comparisonPlayer.totalKills : Math.round(averages.kills)}</td>
+                    </tr>
+                    <tr>
+                      <td>Deaths</td>
+                      <td>{selectedPlayer.totalDeaths}</td>
+                      <td>{comparisonPlayer ? comparisonPlayer.totalDeaths : Math.round(averages.deaths)}</td>
+                    </tr>
+                    <tr>
+                      <td>K/D</td>
+                      <td>{Number(selectedPlayer.kd || 0).toFixed(2)}</td>
+                      <td>{comparisonPlayer ? comparisonValue('kd', comparisonPlayer) : averages.kd.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                      <td>Matches</td>
+                      <td>{selectedPlayer.matchesSeen}</td>
+                      <td>{comparisonPlayer ? comparisonPlayer.matchesSeen : Math.round(averages.matchesSeen)}</td>
+                    </tr>
+                    <tr>
+                      <td>Tracked time</td>
+                      <td>{formatDuration(selectedPlayer.secondsTracked)}</td>
+                      <td>{comparisonPlayer ? comparisonValue('time', comparisonPlayer) : formatDuration(averages.secondsTracked)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </article>
         )}
 
         <p className="stats-footnote">
-          Standard statistics include normal rotations across all 44th servers. WARCON automatically classifies a match as Hardcore when its live map or experience contains the Hardcore tag, regardless of which server is hosting it.
+          Normal statistics cover standard WARDOGS rotations. WARCON automatically classifies a match as Hardcore when its live map or experience contains the Hardcore tag.
         </p>
       </section>
     </>

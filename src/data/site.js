@@ -57,7 +57,7 @@ export const servers = [
     players: '— / 100',
     map: '—',
     mode: 'WARDOGS',
-    joinId: '175590',
+    joinCode: '89607037-07ad-4039-8f7d-1fb9a46e707b',
     scores: {
       valkyra: null,
       lonestar: null,
@@ -74,7 +74,7 @@ export const servers = [
     players: '— / 100',
     map: '—',
     mode: 'WARDOGS',
-    joinId: '294832',
+    joinCode: '6eccb2c4-4e2a-4cf2-b2d5-67faf8e283b1',
     scores: {
       valkyra: null,
       lonestar: null,
@@ -91,6 +91,7 @@ export const servers = [
     players: '— / 100',
     map: '—',
     mode: 'Hardcore',
+    joinCode: '529de475-7326-4178-81f0-f720aa9c9206',
     scores: {
       valkyra: null,
       lonestar: null,

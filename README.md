@@ -51,6 +51,11 @@ The same private file contains all three WARDOGS RCON connections used by the li
 
 `/servers` calls `/api/servers.php`, which reads the server connections directly from `wardogs-secrets.php`.
 
+Each server publishes a persistent WARDOGS join code. Set `joinCode` on each
+entry in the private `wardogs-secrets.php`; `joinId` remains accepted during
+the transition. Invalid or legacy numeric values fall back to the current
+three persistent codes shipped with the site.
+
 ## Player stats — WARCON
 
 WARCON is the target single source of truth for player search/statistics:

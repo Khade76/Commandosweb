@@ -1,4 +1,4 @@
-import { bisectConfigured, getBisectServerIdentifiers, getBisectWardogsServer, getWardogsJoinId } from './providers/bisect.js'
+import { bisectConfigured, getBisectServerIdentifiers, getBisectWardogsServer, getWardogsJoinCode } from './providers/bisect.js'
 import { getWardogsRconStatus, wardogsRconConfigured } from './providers/wardogs-rcon.js'
 
 const DEFAULT_SERVER_IDENTIFIERS = ['278c7bc5', '9290beb1']
@@ -7,7 +7,8 @@ function fallbackWardogsServer(identifier, index, overrides = {}) {
   return {
     id: identifier ? `wardogs-${identifier}` : `wardogs-${index + 1}`,
     identifier: identifier || null,
-    joinId: getWardogsJoinId(index),
+    joinCode: getWardogsJoinCode(index),
+    joinId: getWardogsJoinCode(index),
     name: process.env[`WARDOGS_SERVER_${index + 1}_NAME`] || `44th Commando Regiment — WARDOGS #${index + 1}`,
     status: identifier ? 'Unavailable' : 'Configuration Required',
     region: process.env[`WARDOGS_SERVER_${index + 1}_REGION`] || process.env.WARDOGS_SERVER_REGION || 'Europe / UK',

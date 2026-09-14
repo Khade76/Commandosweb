@@ -34,6 +34,20 @@ if (!is_array($config) || !isset($config['servers']) || !is_array($config['serve
 
 $cacheSeconds = max(5, (int)($config['cache_seconds'] ?? 15));
 $defaultRegion = (string)($config['region'] ?? 'Europe / UK');
+$defaultJoinCodes = [
+    '89607037-07ad-4039-8f7d-1fb9a46e707b',
+    '6eccb2c4-4e2a-4cf2-b2d5-67faf8e283b1',
+    '529de475-7326-4178-81f0-f720aa9c9206',
+];
+
+function persistentJoinCode(array $server, int $index, array $defaults): ?string
+{
+    $configured = trim((string)($server['joinCode'] ?? $server['joinId'] ?? ''));
+    $uuid = '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i';
+
+    if ($configured !== '' && preg_match($uuid, $configured) === 1) return $configured;
+    return isset($defaults[$index]) ? (string)$defaults[$index] : null;
+}
 
 function safeNumber($value): ?float
 {
@@ -185,7 +199,9 @@ function fallbackServer(array $server, string $region): array
 
     return [
         'id' => (string)($server['id'] ?? 'wardogs-server'),
-        'joinId' => isset($server['joinId']) ? (string)$server['joinId'] : null,
+        'joinCode' => isset($server['joinCode']) ? (string)$server['joinCode'] : null,
+        // Retain joinId while deployed bots move to the clearer joinCode field.
+        'joinId' => isset($server['joinCode']) ? (string)$server['joinCode'] : null,
         'name' => (string)($server['name'] ?? '44th Commando Regiment — WARDOGS'),
         'status' => 'Unavailable',
         'region' => (string)($server['region'] ?? $region),
@@ -214,7 +230,9 @@ function publicServerFromStatus(array $server, array $status, string $region, bo
 
     return [
         'id' => (string)($server['id'] ?? 'wardogs-server'),
-        'joinId' => isset($server['joinId']) ? (string)$server['joinId'] : null,
+        'joinCode' => isset($server['joinCode']) ? (string)$server['joinCode'] : null,
+        // Retain joinId while deployed bots move to the clearer joinCode field.
+        'joinId' => isset($server['joinCode']) ? (string)$server['joinCode'] : null,
         'name' => (string)($status['serverName'] ?? $server['name'] ?? '44th Commando Regiment — WARDOGS'),
         'status' => $stale ? 'Online*' : 'Online',
         'region' => (string)($server['region'] ?? $region),
@@ -268,8 +286,9 @@ function loadServer(array $server, string $region, int $cacheSeconds): array
 }
 
 $servers = [];
-foreach ($config['servers'] as $server) {
+foreach ($config['servers'] as $index => $server) {
     if (!is_array($server) || (($server['enabled'] ?? true) === false)) continue;
+    $server['joinCode'] = persistentJoinCode($server, (int)$index, $defaultJoinCodes);
     $servers[] = loadServer($server, $defaultRegion, $cacheSeconds);
 }
 

@@ -21,7 +21,7 @@ return [
             'name' => '44th Commandos #1',
             'url' => 'http://165.217.136.52:9001',
             'password' => 'CHANGE_ME_SERVER_1_RCON_PASSWORD',
-            'joinId' => '175590',
+            'joinCode' => '89607037-07ad-4039-8f7d-1fb9a46e707b',
             'maxPlayers' => 100,
         ],
         [
@@ -29,7 +29,7 @@ return [
             'name' => '44th Commandos #2',
             'url' => 'http://165.217.136.99:9006',
             'password' => 'CHANGE_ME_SERVER_2_RCON_PASSWORD',
-            'joinId' => '294832',
+            'joinCode' => '6eccb2c4-4e2a-4cf2-b2d5-67faf8e283b1',
             'maxPlayers' => 100,
         ],
         [
@@ -39,6 +39,7 @@ return [
             'name' => '44th Commandos #3',
             'url' => 'http://CHANGE_ME_SERVER_3_BISECT_IP:CHANGE_ME_SERVER_3_RCON_PORT',
             'password' => 'CHANGE_ME_SERVER_3_RCON_PASSWORD',
+            'joinCode' => '529de475-7326-4178-81f0-f720aa9c9206',
             'maxPlayers' => 100,
             'region' => 'Europe / UK',
         ],

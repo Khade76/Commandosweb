@@ -1,6 +1,10 @@
 const PANEL_HOST = (process.env.BISECT_PANEL_HOST || 'https://games.bisecthosting.com').replace(/\/$/, '')
 
-const DEFAULT_JOIN_IDS = ['175590', '294832']
+const DEFAULT_JOIN_CODES = [
+  '89607037-07ad-4039-8f7d-1fb9a46e707b',
+  '6eccb2c4-4e2a-4cf2-b2d5-67faf8e283b1',
+  '529de475-7326-4178-81f0-f720aa9c9206',
+]
 
 function unwrap(payload) {
   return payload?.attributes ?? payload?.data?.attributes ?? payload ?? {}
@@ -97,8 +101,15 @@ export function getBisectServerIdentifiers() {
     .filter(Boolean)
 }
 
-export function getWardogsJoinId(index = 0) {
-  return process.env[`WARDOGS_SERVER_${index + 1}_JOIN_ID`] || DEFAULT_JOIN_IDS[index] || null
+export function getWardogsJoinCode(index = 0) {
+  const configured = String(
+    process.env[`WARDOGS_SERVER_${index + 1}_JOIN_CODE`]
+      || process.env[`WARDOGS_SERVER_${index + 1}_JOIN_ID`]
+      || '',
+  ).trim()
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+  return uuid.test(configured) ? configured : DEFAULT_JOIN_CODES[index] || null
 }
 
 export function bisectConfigured() {
@@ -159,7 +170,8 @@ export async function getBisectWardogsServer(identifier, index = 0) {
   return {
     id: `wardogs-${identifier}`,
     identifier,
-    joinId: getWardogsJoinId(index),
+    joinCode: getWardogsJoinCode(index),
+    joinId: getWardogsJoinCode(index),
     name: configuredName || details.name || `44th Commando Regiment — WARDOGS #${index + 1}`,
     status: onlineState ? 'Online' : currentState === 'unknown' ? 'Unknown' : 'Offline',
     region: configuredRegion || process.env.WARDOGS_SERVER_REGION || 'Europe / UK',

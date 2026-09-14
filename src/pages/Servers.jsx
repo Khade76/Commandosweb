@@ -168,6 +168,7 @@ export default function Servers() {
         <div className="server-grid">
           {servers.map((server) => {
             const tone = statusTone(server.status)
+            const joinCode = server.joinCode || server.joinId
             return (
               <article className="server-card" key={server.id || server.name}>
                 <div className="server-top">
@@ -184,10 +185,10 @@ export default function Servers() {
                   <div><span>Map</span><strong>{server.map}</strong></div>
                   <div><span>Mode</span><strong>{server.mode}</strong></div>
                 </div>
-                {server.joinId && (
+                {joinCode && (
                   <div className="actions server-actions">
-                    <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(server.joinId)}>Join Server</a>
-                    <button className="button" type="button" onClick={() => copyJoinId(server.joinId)}>{copiedJoinId === String(server.joinId) ? 'Copied' : 'Copy Join ID'}</button>
+                    <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(joinCode)}>Join Server</a>
+                    <button className="button" type="button" onClick={() => copyJoinId(joinCode)}>{copiedJoinId === String(joinCode) ? 'Copied' : 'Copy Join Code'}</button>
                   </div>
                 )}
                 {server.scores && (
@@ -214,7 +215,7 @@ export default function Servers() {
         </div>
       </section>
       <section className="section cards-three">
-        <article><span>JOIN</span><h3>Join Server</h3><p>Use the Join Server button to launch WARDOGS through Steam and copy the correct server ID automatically.</p></article>
+        <article><span>JOIN</span><h3>Join Server</h3><p>Use the Join Server button to launch WARDOGS through Steam and copy the server&apos;s persistent join code automatically.</p></article>
         <article><span>MATCH</span><h3>Map & scores</h3><p>Current map, matching map artwork and Valkyra, Lonestar and Manticore scores are pulled from the live WARDOGS status.</p></article>
         <article><span>OPS</span><h3>Built to expand</h3><p>The server API is structured so additional hosts and WARDOGS services can be added without rebuilding this page.</p></article>
       </section>

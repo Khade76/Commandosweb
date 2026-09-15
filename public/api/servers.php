@@ -38,6 +38,7 @@ $defaultJoinCodes = [
     '89607037-07ad-4039-8f7d-1fb9a46e707b',
     '6eccb2c4-4e2a-4cf2-b2d5-67faf8e283b1',
     '529de475-7326-4178-81f0-f720aa9c9206',
+    '7f15ef51-2673-4eab-b3c8-d8176a3b41e4',
 ];
 
 function persistentJoinCode(array $server, int $index, array $defaults): ?string
@@ -209,7 +210,7 @@ function fallbackServer(array $server, string $region): array
         'playerCount' => null,
         'maxPlayers' => $maxPlayers,
         'map' => '—',
-        'mode' => 'WARDOGS',
+        'mode' => (string)($server['mode'] ?? 'WARDOGS'),
         'scores' => ['valkyra' => null, 'lonestar' => null, 'manticore' => null],
         'scoreAvailable' => false,
         'provider' => 'WARDOGS RCON',

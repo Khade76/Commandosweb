@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { images } from '../data/site.js'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
@@ -104,6 +104,7 @@ export default function Stats() {
   const [sort, setSort] = useState('kills')
   const [selectedId, setSelectedId] = useState(null)
   const [selectedLookup, setSelectedLookup] = useState(null)
+  const profileRef = useRef(null)
   const [compareId, setCompareId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -309,6 +310,10 @@ export default function Stats() {
   const selectedPlayer = selectedPlayerFromLists
     || (selectedLookup?.id === selectedId ? selectedLookup : null)
 
+  useEffect(() => {
+    if (selectedPlayer) profileRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [selectedPlayer])
+
   const comparisonPlayer = useMemo(
     () => comparisonPool.find((player) => player.id === compareId) || null,
     [comparisonPool, compareId],
@@ -405,7 +410,7 @@ export default function Stats() {
           </div>
         </section>
 
-        <div className="stats-toolbar">
+        {!selectedPlayer && <div className="stats-toolbar">
           <label>
             <span>Search player</span>
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Player name, previous name or Steam ID" />
@@ -424,7 +429,7 @@ export default function Stats() {
               <option value="nameDesc">Name Z–A</option>
             </select>
           </label>
-        </div>
+        </div>}
 
         {error && (
           <div className="stats-notice">
@@ -433,7 +438,7 @@ export default function Stats() {
           </div>
         )}
 
-        {!error && (
+        {!error && !selectedPlayer && (
           <div className="stats-table-wrap">
             <table className="stats-table">
               <thead>
@@ -482,14 +487,17 @@ export default function Stats() {
         )}
 
         {selectedPlayer && !error && (
-          <article className="player-profile-card">
+          <article className="player-profile-card" ref={profileRef}>
             <div className="player-profile-heading">
               <div>
                 <p className="kicker">Player Profile // {GROUP_LABELS[group]}</p>
                 <h2>{selectedPlayer.name}</h2>
                 <p>{selectedPlayer.id}</p>
               </div>
-              <button type="button" onClick={() => setSelectedId(null)}>Close</button>
+              <button type="button" onClick={() => {
+                setSelectedId(null)
+                setSelectedLookup(null)
+              }}>Back to player list</button>
             </div>
 
             <div className="player-profile-grid">

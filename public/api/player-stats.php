@@ -15,7 +15,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 require_once __DIR__ . '/stats-db.php';
 
-$allowedSorts = ['kills', 'deaths', 'kd', 'time', 'matches', 'lastSeen', 'name'];
+$allowedSorts = ['kills', 'deaths', 'kd', 'cash', 'time', 'matches', 'lastSeen', 'name'];
 $allowedGroups = ['normal', 'hardcore'];
 
 $search = isset($_GET['search']) ? substr(trim((string)$_GET['search']), 0, 80) : '';
@@ -84,7 +84,11 @@ function wardogsWarconStatsFetch(array $config, array $query): ?array
             : ('HTTP ' . $status);
         throw new RuntimeException('WARCON stats returned ' . $message);
     }
-    if (!is_array($payload) || !isset($payload['players']) || !is_array($payload['players'])) {
+    $leadersOnly = (($query['leaders'] ?? '') === '1');
+    $validPayload = is_array($payload) && ($leadersOnly
+        ? isset($payload['leaders']) && is_array($payload['leaders'])
+        : isset($payload['players']) && is_array($payload['players']));
+    if (!$validPayload) {
         throw new RuntimeException('WARCON stats returned invalid JSON');
     }
 
@@ -100,6 +104,7 @@ try {
         'offset' => $offset,
     ];
     if ($search !== '') $query['search'] = $search;
+    if (($_GET['leaders'] ?? '') === '1') $query['leaders'] = '1';
 
     $warconPayload = wardogsWarconStatsFetch($config, $query);
     if ($warconPayload !== null) {

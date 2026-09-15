@@ -35,7 +35,34 @@ A successful run prints:
 
 Running the script again is safe. If WARCON upstream has changed in a way that makes the modification unsafe, it exits rather than editing an unexpected block.
 
-## 2. Apply dynamic ruleset session splitting
+## 2. Apply forward-only cash-earned tracking
+
+Cash earned is the sum of positive cash changes observed while a player is connected. Existing
+cash on join is the baseline and is not counted; decreases from spending are ignored. Historical
+sessions remain zero, so the website labels this metric as tracked since 15 September 2026.
+
+Apply the idempotent database column first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrations/warcon/cash-earned.sql \
+  | docker compose exec -T db psql -U warcon -d warcon -v ON_ERROR_STOP=1
+```
+
+Then patch WARCON after the cumulative session K/D patch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrations/warcon/apply-cash-earned.py \
+  -o /tmp/apply-cash-earned.py
+python3 /tmp/apply-cash-earned.py
+```
+
+A successful run prints:
+
+```text
+[44th WARCON] Applied forward-only cash-earned tracking.
+```
+
+## 3. Apply dynamic ruleset session splitting
 
 Run this after the cumulative K/D patch:
 
@@ -53,7 +80,7 @@ A successful run prints:
 
 No WARCON database migration is required. Existing historical sessions are classified from the match that was active when each session began. Very old sessions that crossed Standard/Hardcore boundaries before this patch cannot be perfectly reconstructed; future ruleset changes are split correctly.
 
-## 3. Install the read-only stats route
+## 4. Install the read-only stats route
 
 ```bash
 mkdir -p src/routes/api/public/player-stats
@@ -63,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/Khade76/Commandosweb/main/integrati
 
 The route only supports `GET` and requires a Bearer token. It exposes player statistics only; it does not expose admin actions, notes, bans, RCON passwords or WARCON sessions/cookies.
 
-## 4. Get the WARCON server IDs
+## 5. Get the WARCON server IDs
 
 From the WARCON directory:
 
@@ -80,7 +107,7 @@ Use the WARCON IDs for all three current 44th servers:
 
 The route also accepts exact WARCON server names, but IDs are preferred because names may change.
 
-## 5. Add/update the WARCON environment settings
+## 6. Add/update the WARCON environment settings
 
 Generate a long random token if one is not already configured. Example from PowerShell:
 
@@ -101,7 +128,7 @@ WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID
 
 Do not prefix the private values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for client-exposed configuration, while this API key must remain server-only.
 
-## 6. Rebuild WARCON
+## 7. Rebuild WARCON
 
 The standard WARCON Docker Compose file builds from the local checkout, so rebuild after applying the patches and installing the route:
 
@@ -115,7 +142,7 @@ Then check the containers:
 docker compose ps
 ```
 
-## 7. Test WARCON directly
+## 8. Test WARCON directly
 
 From the WARCON VPS:
 
@@ -148,7 +175,7 @@ curl -sS \
 
 Hardcore may legitimately be empty while none of the configured servers has recorded a Hardcore-tagged match.
 
-## 8. Website configuration
+## 9. Website configuration
 
 The private `wardogs-secrets.php` above `/www` should keep WARCON selected:
 
@@ -165,7 +192,7 @@ The browser never receives the WARCON API key. `/api/player-stats.php` on OVH ad
 
 Server #3's website/RCON status entry also needs to contain its new Bisect connection details now that it is no longer hosted by Qonzer. That is separate from WARCON stats grouping.
 
-## 9. Verify the website source
+## 10. Verify the website source
 
 Open:
 
@@ -186,3 +213,17 @@ https://44thwardogs.com/api/player-stats.php?group=hardcore&limit=5
 ```
 
 Finally open `/stats`. The tabs should describe **Standard** and **Hardcore rulesets**, not specific server numbers.
+## Best cash earned in one round
+
+The Commandosweb cash leaderboard is a single-round record, not current wallet balance and not
+lifetime income. After applying the session-delta and ruleset-split patches, apply the round split:
+
+```bash
+python3 /path/to/Commandosweb/integrations/warcon/apply-round-session-splits.py
+```
+
+Then apply `apply-cash-earned.py`. The match-clock reset closes the old public-stat sessions and
+opens fresh ones without generating join notifications. Positive cash deltas are accumulated within
+that round, so spending does not reduce the recorded earnings. The stats route uses the greatest
+single `cash_earned` session for each player. Tracking begins when this integration is deployed;
+historical rounds are not backfilled.

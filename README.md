@@ -123,7 +123,7 @@ PUBLIC_STATS_NORMAL_SERVERS=SERVER_1_ID,SERVER_2_ID
 PUBLIC_STATS_HARDCORE_SERVERS=SERVER_3_ID
 ```
 
-The integration also adjusts WARCON session tracking so kills/deaths accumulate across WARDOGS match counter resets while a player remains connected. No WARCON database migration is required.
+The integration adjusts WARCON session tracking so kills/deaths accumulate across WARDOGS match counter resets while a player remains connected. It also records positive cash deltas from 15 September 2026 onward for the website's Cash Earned leaderboard; historical cash is deliberately not estimated.
 
 ## Temporary MariaDB fallback
 
@@ -176,3 +176,6 @@ https://github.com/Khade76/44th-wardogs-discord-bots
 - `/donate`
 
 The WARDOGS game link points to the official Steam page. This community website is not affiliated with BULKHEAD or Team17.
+The stats page's Cash Earned leader is the highest positive cash total earned by one player in one
+round. It is tracked forward from 15 September 2026; current wallet balances and older rounds are
+not treated as earnings.

@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { images } from '../data/site.js'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
+const CASH_TRACKING_SINCE = '15 September 2026'
+
+const LEADER_METRICS = [
+  { key: 'kills', index: '01', label: 'Most kills', value: (player) => formatNumber(player.totalKills) },
+  { key: 'deaths', index: '02', label: 'Most deaths', value: (player) => formatNumber(player.totalDeaths) },
+  { key: 'kd', index: '03', label: 'Best K/D', value: (player) => Number(player.kd || 0).toFixed(2) },
+  { key: 'cash', index: '04', label: 'Cash earned', value: (player) => formatNumber(player.cashEarned) },
+  { key: 'time', index: '05', label: 'Time played', value: (player) => formatDuration(player.secondsTracked) },
+]
 
 const GROUP_LABELS = {
   normal: 'Normal',
@@ -20,6 +29,11 @@ function formatDuration(seconds) {
   const minutes = Math.floor((value % 3600) / 60)
   if (hours) return `${hours}h ${minutes}m`
   return `${minutes}m`
+}
+
+function formatNumber(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? new Intl.NumberFormat('en-GB').format(number) : '—'
 }
 
 function formatLastSeen(value) {
@@ -83,6 +97,7 @@ function comparisonValue(metric, player) {
 export default function Stats() {
   const [players, setPlayers] = useState([])
   const [comparisonPool, setComparisonPool] = useState([])
+  const [leaders, setLeaders] = useState(null)
   const [summary, setSummary] = useState(null)
   const [group, setGroup] = useState('normal')
   const [search, setSearch] = useState('')
@@ -95,6 +110,33 @@ export default function Stats() {
   useEffect(() => {
     setSelectedId(null)
     setCompareId('')
+  }, [group])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
+    const loadLeaders = async () => {
+      setLeaders(null)
+      const params = new URLSearchParams({ group, leaders: '1' })
+      try {
+        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
+        if (!cancelled) setLeaders(payload?.leaders || {})
+      } catch (fetchError) {
+        if (!cancelled && fetchError.name !== 'AbortError') setLeaders({})
+      }
+    }
+
+    loadLeaders()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [group])
 
   useEffect(() => {
@@ -219,6 +261,7 @@ export default function Stats() {
     kd: average(comparisonPool, (player) => player.kd),
     matchesSeen: average(comparisonPool, (player) => player.matchesSeen),
     secondsTracked: average(comparisonPool, (player) => player.secondsTracked),
+    cashEarned: average(comparisonPool, (player) => player.cashEarned),
   }), [comparisonPool])
 
   const compareOptions = useMemo(
@@ -261,6 +304,34 @@ export default function Stats() {
           <article><span>Tracked hours</span><strong>{summary ? totalHours : '—'}</strong></article>
         </div>
 
+        <section className="stats-leaders" aria-labelledby="stats-leaders-title">
+          <div className="stats-leaders-heading">
+            <div>
+              <p className="kicker">Ruleset leaders // {GROUP_LABELS[group]}</p>
+              <h2 id="stats-leaders-title">Top Players</h2>
+            </div>
+            <p>Five categories. Five separate records.</p>
+          </div>
+          <div className="stats-leader-grid">
+            {LEADER_METRICS.map((metric) => {
+              const leader = leaders?.[metric.key]
+              return (
+                <article
+                  key={metric.key}
+                  className={`stats-leader-card metric-${metric.key}`}
+                >
+                  <span className="stats-leader-index">{metric.index}</span>
+                  <span className="stats-leader-label">{metric.label}</span>
+                  <strong>{leader?.name || 'Calculating…'}</strong>
+                  <em>{leader ? metric.value(leader) : '—'}</em>
+                  {metric.key === 'kd' && <small>Minimum 25 kills</small>}
+                  {metric.key === 'cash' && <small>Best single round since {CASH_TRACKING_SINCE}</small>}
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
         <div className="stats-toolbar">
           <label>
             <span>Search player</span>
@@ -272,6 +343,7 @@ export default function Stats() {
               <option value="kills">Kills</option>
               <option value="kd">K/D</option>
               <option value="deaths">Deaths</option>
+              <option value="cash">Cash earned</option>
               <option value="time">Time tracked</option>
               <option value="matches">Matches seen</option>
               <option value="lastSeen">Last seen</option>
@@ -298,6 +370,7 @@ export default function Stats() {
                   <th>Kills</th>
                   <th>Deaths</th>
                   <th>K/D</th>
+                  <th>Cash earned</th>
                   <th>Matches</th>
                   <th>Tracked</th>
                   <th>Last Seen</th>
@@ -320,13 +393,14 @@ export default function Stats() {
                     <td>{player.totalKills}</td>
                     <td>{player.totalDeaths}</td>
                     <td>{player.kd}</td>
+                    <td>{formatNumber(player.cashEarned)}</td>
                     <td>{player.matchesSeen}</td>
                     <td>{formatDuration(player.secondsTracked)}</td>
                     <td>{formatLastSeen(player.lastSeen)}</td>
                   </tr>
                 ))}
                 {!loading && !players.length && (
-                  <tr><td colSpan="8" className="stats-empty">No matching players found in {GROUP_LABELS[group]}.</td></tr>
+                  <tr><td colSpan="9" className="stats-empty">No matching players found in {GROUP_LABELS[group]}.</td></tr>
                 )}
               </tbody>
             </table>
@@ -349,6 +423,7 @@ export default function Stats() {
               <div><span>Kills</span><strong>{selectedPlayer.totalKills}</strong></div>
               <div><span>Deaths</span><strong>{selectedPlayer.totalDeaths}</strong></div>
               <div><span>K/D</span><strong>{selectedPlayer.kd}</strong></div>
+              <div><span>Cash earned</span><strong>{formatNumber(selectedPlayer.cashEarned)}</strong></div>
               <div><span>Matches seen</span><strong>{selectedPlayer.matchesSeen}</strong></div>
               <div><span>Tracked time</span><strong>{formatDuration(selectedPlayer.secondsTracked)}</strong></div>
               <div><span>Peak kills / match</span><strong>{selectedPlayer.peakKillsInMatch ?? '—'}</strong></div>
@@ -423,6 +498,11 @@ export default function Stats() {
                       <td>Matches</td>
                       <td>{selectedPlayer.matchesSeen}</td>
                       <td>{comparisonPlayer ? comparisonPlayer.matchesSeen : Math.round(averages.matchesSeen)}</td>
+                    </tr>
+                    <tr>
+                      <td>Cash earned</td>
+                      <td>{formatNumber(selectedPlayer.cashEarned)}</td>
+                      <td>{comparisonPlayer ? formatNumber(comparisonPlayer.cashEarned) : formatNumber(averages.cashEarned)}</td>
                     </tr>
                     <tr>
                       <td>Tracked time</td>

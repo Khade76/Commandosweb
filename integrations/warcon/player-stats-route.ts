@@ -103,6 +103,8 @@ export const GET = route(async (event) => {
 			? sql`a.total_deaths DESC, a.total_kills DESC`
 			: sort === 'kd'
 				? sql`(CASE WHEN a.total_deaths > 0 THEN a.total_kills::numeric / a.total_deaths ELSE a.total_kills END) DESC, a.total_kills DESC`
+			: sort === 'cash'
+				? sql`a.total_cash_earned DESC, a.total_kills DESC`
 				: sort === 'time'
 					? sql`a.seconds_tracked DESC`
 					: sort === 'matches'
@@ -151,6 +153,69 @@ export const GET = route(async (event) => {
 				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
 			)`;
 
+	if (event.url.searchParams.get('leaders') === '1') {
+		const leaderRows = await env.db.execute<{
+			metric: string;
+			steamId: string;
+			name: string;
+			totalKills: string | number;
+			totalDeaths: string | number;
+			cashEarned: string | number;
+			secondsTracked: string | number;
+		}>(sql`
+			WITH classified AS (${classifiedSessions}),
+			scoped AS (SELECT * FROM classified WHERE stats_group = ${group}),
+			totals AS (
+				SELECT
+					steam_id,
+					SUM(kills)::bigint AS total_kills,
+					SUM(deaths)::bigint AS total_deaths,
+					COALESCE(MAX(cash_earned), 0)::bigint AS cash_earned,
+					SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - joined_at)))::bigint AS seconds_tracked
+				FROM scoped
+				GROUP BY steam_id
+			),
+			leaders AS (
+				(SELECT 'kills'::text AS metric, t.* FROM totals t ORDER BY total_kills DESC, total_deaths ASC, steam_id LIMIT 1)
+				UNION ALL
+				(SELECT 'deaths'::text AS metric, t.* FROM totals t ORDER BY total_deaths DESC, total_kills DESC, steam_id LIMIT 1)
+				UNION ALL
+				(SELECT 'kd'::text AS metric, t.* FROM totals t WHERE total_kills >= 25 ORDER BY (CASE WHEN total_deaths > 0 THEN total_kills::numeric / total_deaths ELSE total_kills END) DESC, total_kills DESC, steam_id LIMIT 1)
+				UNION ALL
+				(SELECT 'cash'::text AS metric, t.* FROM totals t WHERE cash_earned > 0 ORDER BY cash_earned DESC, total_kills DESC, steam_id LIMIT 1)
+				UNION ALL
+				(SELECT 'time'::text AS metric, t.* FROM totals t ORDER BY seconds_tracked DESC, total_kills DESC, steam_id LIMIT 1)
+			)
+			SELECT
+				l.metric,
+				l.steam_id AS "steamId",
+				(SELECT x.name FROM scoped x WHERE x.steam_id = l.steam_id ORDER BY x.last_seen DESC LIMIT 1) AS name,
+				l.total_kills AS "totalKills",
+				l.total_deaths AS "totalDeaths",
+				l.cash_earned AS "cashEarned",
+				l.seconds_tracked AS "secondsTracked"
+			FROM leaders l
+		`);
+
+		const leaders: Record<string, unknown> = {};
+		for (const row of leaderRows) {
+			const kills = finite(row.totalKills);
+			const deaths = finite(row.totalDeaths);
+			leaders[row.metric] = {
+				id: row.steamId,
+				name: row.name || row.steamId,
+				group,
+				totalKills: kills,
+				totalDeaths: deaths,
+				kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
+				cashEarned: finite(row.cashEarned),
+				secondsTracked: finite(row.secondsTracked)
+			};
+		}
+
+		return apiJson({ group, leaders, source: 'warcon', generatedAt: new Date().toISOString() });
+	}
+
 	const rows = await env.db.execute<{
 		steamId: string;
 		name: string;
@@ -159,6 +224,7 @@ export const GET = route(async (event) => {
 		lastSeen: Date;
 		totalKills: string | number;
 		totalDeaths: string | number;
+		totalCashEarned: string | number;
 		sessions: string | number;
 		secondsTracked: string | number;
 		matchesSeen: string | number;
@@ -191,6 +257,7 @@ export const GET = route(async (event) => {
 				MAX(s.last_seen) AS last_seen,
 				SUM(s.kills)::bigint AS total_kills,
 				SUM(s.deaths)::bigint AS total_deaths,
+				COALESCE(MAX(s.cash_earned), 0)::bigint AS total_cash_earned,
 				COUNT(*)::bigint AS sessions,
 				SUM(EXTRACT(EPOCH FROM (COALESCE(s.left_at, now()) - s.joined_at)))::bigint AS seconds_tracked,
 				BOOL_OR(s.left_at IS NULL) AS online
@@ -213,6 +280,7 @@ export const GET = route(async (event) => {
 			a.last_seen AS "lastSeen",
 			a.total_kills AS "totalKills",
 			a.total_deaths AS "totalDeaths",
+			a.total_cash_earned AS "totalCashEarned",
 			a.sessions,
 			a.seconds_tracked AS "secondsTracked",
 			COALESCE(pm.matches_seen, 0)::bigint AS "matchesSeen",
@@ -300,6 +368,7 @@ export const GET = route(async (event) => {
 			currentServerName,
 			currentFaction: row.currentFaction || null,
 			currentCash: row.currentCash === null ? null : finite(row.currentCash),
+			cashEarned: finite(row.totalCashEarned),
 			totalKills: kills,
 			totalDeaths: deaths,
 			kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,

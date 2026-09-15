@@ -1,7 +1,8 @@
 import { bisectConfigured, getBisectServerIdentifiers, getBisectWardogsServer, getWardogsJoinCode } from './providers/bisect.js'
 import { getWardogsRconStatus, wardogsRconConfigured } from './providers/wardogs-rcon.js'
+import { servers as serverDirectory } from '../src/data/site.js'
 
-const DEFAULT_SERVER_IDENTIFIERS = ['278c7bc5', '9290beb1']
+const DEFAULT_SERVER_IDENTIFIERS = ['278c7bc5', '9290beb1', '9f71e8ef', '12577']
 
 function fallbackWardogsServer(identifier, index, overrides = {}) {
   return {
@@ -9,14 +10,14 @@ function fallbackWardogsServer(identifier, index, overrides = {}) {
     identifier: identifier || null,
     joinCode: getWardogsJoinCode(index),
     joinId: getWardogsJoinCode(index),
-    name: process.env[`WARDOGS_SERVER_${index + 1}_NAME`] || `44th Commando Regiment — WARDOGS #${index + 1}`,
+    name: process.env[`WARDOGS_SERVER_${index + 1}_NAME`] || serverDirectory[index]?.name || `44th Commando Regiment — WARDOGS #${index + 1}`,
     status: identifier ? 'Unavailable' : 'Configuration Required',
-    region: process.env[`WARDOGS_SERVER_${index + 1}_REGION`] || process.env.WARDOGS_SERVER_REGION || 'Europe / UK',
+    region: process.env[`WARDOGS_SERVER_${index + 1}_REGION`] || process.env.WARDOGS_SERVER_REGION || serverDirectory[index]?.region || 'Europe / UK',
     players: `— / ${process.env[`WARDOGS_SERVER_${index + 1}_MAX_PLAYERS`] || process.env.WARDOGS_MAX_PLAYERS || 100}`,
     playerCount: null,
     maxPlayers: Number(process.env[`WARDOGS_SERVER_${index + 1}_MAX_PLAYERS`] || process.env.WARDOGS_MAX_PLAYERS || 100),
     map: '—',
-    mode: 'WARDOGS',
+    mode: serverDirectory[index]?.mode || 'WARDOGS',
     scores: {
       valkyra: null,
       lonestar: null,
@@ -47,14 +48,14 @@ const trainingServer = {
 const cache = new Map()
 const CACHE_MS = 15_000
 
-async function getWardogsServer(identifier, index) {
+async function getWardogsServer(identifier, index, useBisect) {
   const cacheKey = identifier || `server-${index + 1}`
   const cached = cache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) return cached.value
 
   let value = fallbackWardogsServer(identifier, index)
 
-  if (bisectConfigured() && identifier) {
+  if (useBisect) {
     try {
       value = await getBisectWardogsServer(identifier, index)
     } catch (error) {
@@ -75,27 +76,29 @@ async function getWardogsServer(identifier, index) {
   return value
 }
 
-function configuredServerIdentifiers() {
+function configuredServers() {
   const bisectIdentifiers = getBisectServerIdentifiers()
-  if (bisectIdentifiers.length) return bisectIdentifiers
-
-  return DEFAULT_SERVER_IDENTIFIERS.filter((_identifier, index) => wardogsRconConfigured(index))
+  // Keep the original slot index when only some RCON connections are configured.
+  // XRealm (#4) is RCON-only and must never be queried through Bisect's panel API.
+  return DEFAULT_SERVER_IDENTIFIERS.map((identifier, index) => ({
+    identifier: index < 3 ? bisectIdentifiers[index] || identifier : identifier,
+    index,
+    useBisect: index < 3 && bisectConfigured() && Boolean(bisectIdentifiers[index]),
+  })).filter(({ index, useBisect }) => useBisect || wardogsRconConfigured(index))
 }
 
 export async function getServers() {
-  const identifiers = configuredServerIdentifiers()
+  const configured = configuredServers()
 
-  if (!identifiers.length) {
+  if (!configured.length) {
     return [
-      fallbackWardogsServer(null, 0, {
-        notes: 'Configure Bisect or WARDOGS RCON on OVH to enable live status.',
-      }),
+      ...DEFAULT_SERVER_IDENTIFIERS.map((identifier, index) => fallbackWardogsServer(identifier, index)),
       trainingServer,
     ]
   }
 
   const liveServers = await Promise.all(
-    identifiers.map((identifier, index) => getWardogsServer(identifier, index)),
+    configured.map(({ identifier, index, useBisect }) => getWardogsServer(identifier, index, useBisect)),
   )
 
   return [...liveServers, trainingServer]

@@ -35,13 +35,23 @@ return [
         [
             // Server #3 is now another Bisect-hosted normal server. Replace these placeholders
             // with the current Bisect allocation/RCON details in the live wardogs-secrets.php.
-            'id' => 'wardogs-CHANGE_ME_SERVER_3_BISECT_ID',
+            'id' => 'wardogs-9f71e8ef',
             'name' => '44th Commandos #3',
             'url' => 'http://CHANGE_ME_SERVER_3_BISECT_IP:CHANGE_ME_SERVER_3_RCON_PORT',
             'password' => 'CHANGE_ME_SERVER_3_RCON_PASSWORD',
             'joinCode' => '529de475-7326-4178-81f0-f720aa9c9206',
             'maxPlayers' => 100,
             'region' => 'Europe / UK',
+        ],
+        [
+            // XRealm ID 12577 is the website/bot lookup key, not the WARCON database ID.
+            'id' => 'wardogs-12577',
+            'name' => '44th Commandos #4 | Hardcore | discord.gg/44thwardogs',
+            'url' => 'http://84.32.103.104:20001',
+            'password' => 'CHANGE_ME_SERVER_4_RCON_PASSWORD',
+            'joinCode' => '7f15ef51-2673-4eab-b3c8-d8176a3b41e4',
+            'region' => 'XRealm',
+            'mode' => 'Hardcore',
         ],
     ],
 ];

@@ -45,7 +45,7 @@ Keep the real `wardogs-secrets.php` one level above `/www` so RCON and stats-sou
 
 Production configuration is stored in the private `wardogs-secrets.php`. `.env` is not used by the live OVH website.
 
-The same private file contains all three WARDOGS RCON connections used by the live `/servers` page.
+The same private file contains all four WARDOGS RCON connections used by the live `/servers` page.
 
 ## Live server page
 
@@ -54,7 +54,19 @@ The same private file contains all three WARDOGS RCON connections used by the li
 Each server publishes a persistent WARDOGS join code. Set `joinCode` on each
 entry in the private `wardogs-secrets.php`; `joinId` remains accepted during
 the transition. Invalid or legacy numeric values fall back to the current
-three persistent codes shipped with the site.
+four persistent codes shipped with the site.
+
+### Add XRealm Server #4
+
+Server #4 is `44th Commandos #4 | Hardcore | discord.gg/44thwardogs`. Its website and Discord lookup key is `wardogs-12577`, based on XRealm ID `12577`, and its persistent join code is `7f15ef51-2673-4eab-b3c8-d8176a3b41e4`.
+
+Append the Server #4 entry from `ovh/wardogs-secrets.example.php` to the existing private `servers` array. Keep the existing server records, WARCON key and other settings. Set its RCON password privately and use `http://84.32.103.104:20001` (or the HTTPS scheme if that is what the working WARCON connection uses). Port `20001` is for RCON, not a player join address.
+
+Build and upload `dist/` to OVH `/www`, including the updated `api/servers.php` and `.htaccess`. The directory will show #4's fallback card and copyable join code even before RCON is configured. Once the private entry is configured, `/api/servers.php` must contain `id: "wardogs-12577"`; Discord bot #4 then reads that same record. No Discord bot credentials belong in the website.
+
+Server #3's current website ID is `wardogs-9f71e8ef`; the old Qonzer Hardcore card has been replaced with its Normal server identity.
+
+Adding #4 to WARCON does not automatically add it to the website stats allowlist. Append its existing **WARCON database server ID** to `WARDOGS_STATS_SERVERS`, preserving the other IDs, and recreate the relevant WARCON service containers to load the environment change. Do not substitute XRealm ID `12577` for the WARCON ID. See `integrations/warcon/README.md` for the read-only ID lookup and verification steps.
 
 ## Player stats — WARCON
 
@@ -63,7 +75,8 @@ WARCON is the target single source of truth for player search/statistics:
 ```text
 WARDOGS #1 ─┐
 WARDOGS #2 ─┼──► WARCON ─► Postgres / TimescaleDB
-WARDOGS #3 ─┘                    │
+WARDOGS #3 ─┤                    │
+WARDOGS #4 ─┘                    │
                                  │ read-only API key
                                  ▼
                               OVH PHP
@@ -78,8 +91,8 @@ WARDOGS #3 ─┘                    │
 Normal and Hardcore remain separate:
 
 ```text
-Normal   = WARCON Servers #1 + #2 combined
-Hardcore = WARCON Server #3 only
+Normal   = sessions recorded during Standard matches
+Hardcore = sessions recorded during Hardcore matches
 ```
 
 WARCON already stores player sessions, names, factions, join/leave times, matches and online state. The 44th integration adds a read-only, API-key-protected endpoint for lifetime player search and combined server-group totals.
@@ -118,9 +131,8 @@ The browser never receives the WARCON API key. OVH sends it server-to-server.
 WARCON receives:
 
 ```env
-PUBLIC_STATS_API_KEY=LONG_RANDOM_SECRET
-PUBLIC_STATS_NORMAL_SERVERS=SERVER_1_ID,SERVER_2_ID
-PUBLIC_STATS_HARDCORE_SERVERS=SERVER_3_ID
+WARDOGS_STATS_API_KEY=LONG_RANDOM_SECRET
+WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID
 ```
 
 The integration adjusts WARCON session tracking so kills/deaths accumulate across WARDOGS match counter resets while a player remains connected. It also records positive cash deltas from 15 September 2026 onward for the website's Cash Earned leaderboard; historical cash is deliberately not estimated.
@@ -154,7 +166,7 @@ The optional `.env` file is only for the local Node development backend and RCON
 
 ## Discord bots
 
-The three Discord bots, status presence and `/status` command remain in:
+The four Discord bots, status presence and `/status` command remain in:
 
 ```text
 https://github.com/Khade76/44th-wardogs-discord-bots

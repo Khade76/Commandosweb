@@ -275,7 +275,7 @@ async function printCapabilities(index) {
   }
 }
 
-for (let index = 0; index < 2; index += 1) {
+for (let index = 0; index < 4; index += 1) {
   const serverNumber = index + 1
   console.log(`\n=== WARDOGS RCON server ${serverNumber} ===`)
 
@@ -308,7 +308,7 @@ for (let index = 0; index < 2; index += 1) {
   }
 
   if (parsed.protocol === 'http:') {
-    console.log('Transport: plain HTTP (expected for this Bisect WARDOGS RCON allocation).')
+    console.log('Transport: plain HTTP (verify this matches the provider RCON allocation).')
     const probe = await probePlainHttp(hostname, port)
     if (!probe?.likelyRcon) {
       console.log('Diagnosis: the endpoint is reachable but does not strongly fingerprint as the expected WARDOGS RCON API.')

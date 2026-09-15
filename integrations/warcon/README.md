@@ -8,12 +8,12 @@ The website does not need a separate MariaDB collector when `stats_source` is se
 
 Stats are no longer tied to a server number.
 
-All three 44th servers are included in the same WARCON stats source list. The public stats route looks at the WARCON `matches` row that was active when a player session began:
+All four 44th servers belong in the same WARCON stats source list. The public stats route looks at the WARCON `matches` row that was active when a player session began:
 
 - if the match `map` or `experiences` contains `Hardcore` (for example `KOTH_Hardcore`), that session belongs to **Hardcore**;
 - otherwise it belongs to **Standard**.
 
-This means Server #1, #2 or #3 can host a Hardcore rotation later without changing the website configuration.
+This means any included server can host a Hardcore rotation later without changing the website configuration.
 
 Because WARCON player sessions can normally span several matches, `apply-ruleset-session-splits.py` closes/reopens the in-memory player session only when the live ruleset changes Standard <-> Hardcore. That keeps cumulative K/D on the correct ruleset even when a player stays connected through a rotation change. The split is internal stats bookkeeping and does not generate fake player-join triggers.
 
@@ -99,13 +99,16 @@ docker compose exec -T db psql -U warcon -d warcon -P pager=off \
   -c "SELECT id, name FROM servers ORDER BY sort_order, name;"
 ```
 
-Use the WARCON IDs for all three current 44th servers:
+Use the WARCON IDs for all four current 44th servers:
 
 - 44th Commandos #1
 - 44th Commandos #2
 - 44th Commandos #3
+- 44th Commandos #4 | Hardcore | discord.gg/44thwardogs (XRealm)
 
 The route also accepts exact WARCON server names, but IDs are preferred because names may change.
+
+Server #4 is already registered in WARCON. Read its existing ID with the query above; XRealm ID `12577` and website ID `wardogs-12577` are separate identifiers. Do not create a duplicate WARCON server.
 
 ## 6. Add/update the WARCON environment settings
 
@@ -121,10 +124,12 @@ WARCON `.env` should contain:
 
 ```env
 WARDOGS_STATS_API_KEY=PASTE_THE_RANDOM_TOKEN
-WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID
+WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID
 ```
 
 `WARDOGS_STATS_SERVERS` replaces the old fixed `WARDOGS_STATS_NORMAL_SERVERS` / `WARDOGS_STATS_HARDCORE_SERVERS` split. The updated route still reads the old variables as a migration fallback, but they should be removed after `WARDOGS_STATS_SERVERS` is confirmed.
+
+For an existing installation, preserve the current API key and server references and append #4's resolved WARCON ID. If only the legacy lists are present, retain their combined references when setting the new list. The match ruleset determines Normal/Hardcore membership; this update does not rewrite historical sessions.
 
 Do not prefix the private values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for client-exposed configuration, while this API key must remain server-only.
 

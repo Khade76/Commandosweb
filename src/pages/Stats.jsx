@@ -103,12 +103,14 @@ export default function Stats() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('kills')
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedLookup, setSelectedLookup] = useState(null)
   const [compareId, setCompareId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
     setSelectedId(null)
+    setSelectedLookup(null)
     setCompareId('')
   }, [group])
 
@@ -128,7 +130,34 @@ export default function Stats() {
         if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
         if (!cancelled) setLeaders(payload?.leaders || {})
       } catch (fetchError) {
-        if (!cancelled && fetchError.name !== 'AbortError') setLeaders({})
+        if (fetchError.name === 'AbortError') return
+
+        // Older WARCON stats routes do not provide the combined leaders response yet. Keep the
+        // established categories useful while the per-round cash collector is being deployed.
+        try {
+          const requests = [
+            ['kills', 'kills', 1],
+            ['deaths', 'deaths', 1],
+            ['kd', 'kd', 500],
+            ['time', 'time', 1],
+          ]
+          const results = await Promise.all(requests.map(async ([key, order, limit]) => {
+            const fallbackParams = new URLSearchParams({ group, sort: order, limit: String(limit) })
+            const response = await fetch(`${STATS_API_URL}?${fallbackParams.toString()}`, {
+              cache: 'no-store',
+              signal: controller.signal,
+            })
+            if (!response.ok) throw new Error(`Stats API returned ${response.status}`)
+            const payload = await response.json()
+            const player = key === 'kd'
+              ? payload.players?.find((candidate) => Number(candidate.totalKills || 0) >= 25)
+              : payload.players?.[0]
+            return [key, player || null]
+          }))
+          if (!cancelled) setLeaders(Object.fromEntries(results))
+        } catch (fallbackError) {
+          if (!cancelled && fallbackError.name !== 'AbortError') setLeaders({})
+        }
       }
     }
 
@@ -233,12 +262,52 @@ export default function Stats() {
     return Number.isFinite(seconds) ? Math.round(seconds / 3600) : 0
   }, [summary])
 
-  const selectedPlayer = useMemo(
+  const selectedPlayerFromLists = useMemo(
     () => comparisonPool.find((player) => player.id === selectedId)
       || players.find((player) => player.id === selectedId)
       || null,
     [comparisonPool, players, selectedId],
   )
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
+    if (!selectedId || selectedPlayerFromLists) {
+      setSelectedLookup(null)
+      return () => controller.abort()
+    }
+
+    const loadSelectedPlayer = async () => {
+      const params = new URLSearchParams({
+        group,
+        search: selectedId,
+        sort: 'kills',
+        limit: '1',
+      })
+
+      try {
+        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!response.ok) return
+        const payload = await response.json()
+        if (!cancelled) setSelectedLookup(payload.players?.[0] || null)
+      } catch (fetchError) {
+        if (!cancelled && fetchError.name !== 'AbortError') setSelectedLookup(null)
+      }
+    }
+
+    loadSelectedPlayer()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [group, selectedId, selectedPlayerFromLists])
+
+  const selectedPlayer = selectedPlayerFromLists
+    || (selectedLookup?.id === selectedId ? selectedLookup : null)
 
   const comparisonPlayer = useMemo(
     () => comparisonPool.find((player) => player.id === compareId) || null,
@@ -315,18 +384,22 @@ export default function Stats() {
           <div className="stats-leader-grid">
             {LEADER_METRICS.map((metric) => {
               const leader = leaders?.[metric.key]
+              const waitingForRoundData = leaders && metric.key === 'cash' && !leader
               return (
-                <article
+                <button
                   key={metric.key}
+                  type="button"
                   className={`stats-leader-card metric-${metric.key}`}
+                  disabled={!leader}
+                  onClick={() => leader && setSelectedId(leader.id)}
                 >
                   <span className="stats-leader-index">{metric.index}</span>
                   <span className="stats-leader-label">{metric.label}</span>
-                  <strong>{leader?.name || 'Calculating…'}</strong>
+                  <strong>{leader?.name || (waitingForRoundData ? 'Awaiting round data' : 'Calculating…')}</strong>
                   <em>{leader ? metric.value(leader) : '—'}</em>
                   {metric.key === 'kd' && <small>Minimum 25 kills</small>}
                   {metric.key === 'cash' && <small>Best single round since {CASH_TRACKING_SINCE}</small>}
-                </article>
+                </button>
               )
             })}
           </div>

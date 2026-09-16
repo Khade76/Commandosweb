@@ -118,6 +118,23 @@ export const servers = [
     notes: 'Live server status is currently unavailable. You can still copy the persistent join code.',
   },
   {
+    id: 'wardogs-12648',
+    name: '44th Commandos #5 | discord.gg/44thwardogs',
+    status: 'Unavailable',
+    region: 'XRealm',
+    players: '—',
+    map: '—',
+    mode: 'WARDOGS',
+    joinCode: '3500961c-24df-40b1-b299-6a897eddc2bd',
+    scores: {
+      valkyra: null,
+      lonestar: null,
+      manticore: null,
+    },
+    address: '',
+    notes: 'Live server status is currently unavailable. You can still copy the persistent join code.',
+  },
+  {
     id: 'training-events',
     name: '44th Training & Events',
     status: 'Planned',

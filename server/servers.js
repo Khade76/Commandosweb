@@ -2,7 +2,7 @@ import { bisectConfigured, getBisectServerIdentifiers, getBisectWardogsServer, g
 import { getWardogsRconStatus, wardogsRconConfigured } from './providers/wardogs-rcon.js'
 import { servers as serverDirectory } from '../src/data/site.js'
 
-const DEFAULT_SERVER_IDENTIFIERS = ['278c7bc5', '9290beb1', '9f71e8ef', '12577']
+const DEFAULT_SERVER_IDENTIFIERS = ['278c7bc5', '9290beb1', '9f71e8ef', '12577', '12648']
 
 function fallbackWardogsServer(identifier, index, overrides = {}) {
   return {
@@ -79,7 +79,7 @@ async function getWardogsServer(identifier, index, useBisect) {
 function configuredServers() {
   const bisectIdentifiers = getBisectServerIdentifiers()
   // Keep the original slot index when only some RCON connections are configured.
-  // XRealm (#4) is RCON-only and must never be queried through Bisect's panel API.
+  // XRealm (#4 and #5) are RCON-only and must never be queried through Bisect's panel API.
   return DEFAULT_SERVER_IDENTIFIERS.map((identifier, index) => ({
     identifier: index < 3 ? bisectIdentifiers[index] || identifier : identifier,
     index,

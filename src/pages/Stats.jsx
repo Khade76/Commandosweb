@@ -3,6 +3,7 @@ import { images } from '../data/site.js'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
 const CASH_TRACKING_SINCE = '15 September 2026'
+const STATS_GROUPS = ['normal', 'hardcore']
 
 const LEADER_METRICS = [
   { key: 'kills', index: '01', label: 'Most kills', value: (player) => formatNumber(player.totalKills) },
@@ -11,16 +12,6 @@ const LEADER_METRICS = [
   { key: 'cash', index: '04', label: 'Cash earned', value: (player) => formatNumber(player.cashEarned) },
   { key: 'time', index: '05', label: 'Time played', value: (player) => formatDuration(player.secondsTracked) },
 ]
-
-const GROUP_LABELS = {
-  normal: 'Normal',
-  hardcore: 'Hardcore',
-}
-
-const GROUP_DESCRIPTIONS = {
-  normal: 'Normal WARDOGS rotations',
-  hardcore: 'Hardcore WARDOGS rotations',
-}
 
 function formatDuration(seconds) {
   const value = Number(seconds)
@@ -41,6 +32,160 @@ function formatLastSeen(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleString()
+}
+
+function dateValue(value) {
+  const timestamp = value ? new Date(value).getTime() : 0
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function mergeCountMaps(left, right) {
+  const merged = { ...(left || {}) }
+  Object.entries(right || {}).forEach(([key, value]) => {
+    merged[key] = Number(merged[key] || 0) + Number(value || 0)
+  })
+  return merged
+}
+
+function mergePlayerRecords(existing, incoming) {
+  if (!existing) {
+    const kills = Number(incoming.totalKills || 0)
+    const deaths = Number(incoming.totalDeaths || 0)
+    return {
+      ...incoming,
+      group: 'all',
+      totalKills: kills,
+      totalDeaths: deaths,
+      kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
+      cashEarned: Number(incoming.cashEarned ?? incoming.peakCash ?? 0),
+      matchesSeen: Number(incoming.matchesSeen || 0),
+      sessionsSeen: Number(incoming.sessionsSeen || 0),
+      secondsTracked: Number(incoming.secondsTracked || 0),
+      aliases: [...new Set((incoming.aliases || []).filter(Boolean))],
+      factionCounts: { ...(incoming.factionCounts || {}) },
+      serverCounts: { ...(incoming.serverCounts || {}) },
+      serversPlayed: [...new Set((incoming.serversPlayed || []).filter(Boolean))],
+    }
+  }
+
+  const existingLast = dateValue(existing.lastSeen)
+  const incomingLast = dateValue(incoming.lastSeen)
+  const incomingIsNewer = incomingLast >= existingLast
+  const totalKills = Number(existing.totalKills || 0) + Number(incoming.totalKills || 0)
+  const totalDeaths = Number(existing.totalDeaths || 0) + Number(incoming.totalDeaths || 0)
+  const existingOnline = Boolean(existing.online)
+  const incomingOnline = Boolean(incoming.online)
+
+  const firstSeenCandidates = [existing.firstSeen, incoming.firstSeen]
+    .filter(Boolean)
+    .sort((a, b) => dateValue(a) - dateValue(b))
+  const lastSeenCandidates = [existing.lastSeen, incoming.lastSeen]
+    .filter(Boolean)
+    .sort((a, b) => dateValue(b) - dateValue(a))
+
+  const selectedName = incomingIsNewer && incoming.name ? incoming.name : existing.name
+  const aliases = new Set([
+    ...(existing.aliases || []),
+    ...(incoming.aliases || []),
+  ].filter(Boolean))
+  if (existing.name && existing.name !== selectedName) aliases.add(existing.name)
+  if (incoming.name && incoming.name !== selectedName) aliases.add(incoming.name)
+
+  const merged = {
+    ...existing,
+    name: selectedName || existing.id,
+    group: 'all',
+    firstSeen: firstSeenCandidates[0] || existing.firstSeen || incoming.firstSeen || null,
+    lastSeen: lastSeenCandidates[0] || existing.lastSeen || incoming.lastSeen || null,
+    online: existingOnline || incomingOnline,
+    totalKills,
+    totalDeaths,
+    kd: totalDeaths > 0 ? Number((totalKills / totalDeaths).toFixed(2)) : totalKills,
+    cashEarned: Math.max(
+      Number(existing.cashEarned ?? existing.peakCash ?? 0),
+      Number(incoming.cashEarned ?? incoming.peakCash ?? 0),
+    ),
+    matchesSeen: Number(existing.matchesSeen || 0) + Number(incoming.matchesSeen || 0),
+    sessionsSeen: Number(existing.sessionsSeen || 0) + Number(incoming.sessionsSeen || 0),
+    secondsTracked: Number(existing.secondsTracked || 0) + Number(incoming.secondsTracked || 0),
+    peakKillsInMatch: Math.max(
+      Number(existing.peakKillsInMatch || 0),
+      Number(incoming.peakKillsInMatch || 0),
+    ),
+    aliases: [...aliases],
+    factionCounts: mergeCountMaps(existing.factionCounts, incoming.factionCounts),
+    serverCounts: mergeCountMaps(existing.serverCounts, incoming.serverCounts),
+    serversPlayed: [...new Set([
+      ...(existing.serversPlayed || []),
+      ...(incoming.serversPlayed || []),
+    ].filter(Boolean))],
+  }
+
+  if (incomingOnline && (!existingOnline || incomingIsNewer)) {
+    merged.currentServer = incoming.currentServer ?? null
+    merged.currentServerName = incoming.currentServerName ?? null
+    merged.currentFaction = incoming.currentFaction ?? null
+    merged.currentCash = incoming.currentCash ?? null
+    merged.currentPingMs = incoming.currentPingMs ?? null
+  }
+
+  return merged
+}
+
+function mergePlayers(payloads) {
+  const byId = new Map()
+  payloads.forEach((payload) => {
+    ;(payload?.players || []).forEach((player) => {
+      if (!player?.id) return
+      byId.set(player.id, mergePlayerRecords(byId.get(player.id), player))
+    })
+  })
+  return [...byId.values()]
+}
+
+function sortPlayers(players, sort) {
+  const sorted = [...players]
+  sorted.sort((left, right) => {
+    if (sort === 'name' || sort === 'nameDesc') {
+      const result = String(left.name || '').localeCompare(String(right.name || ''))
+      return sort === 'nameDesc' ? -result : result
+    }
+    if (sort === 'lastSeen') return dateValue(right.lastSeen) - dateValue(left.lastSeen)
+
+    const field = {
+      kills: 'totalKills',
+      deaths: 'totalDeaths',
+      kd: 'kd',
+      cash: 'cashEarned',
+      time: 'secondsTracked',
+      matches: 'matchesSeen',
+    }[sort] || 'totalKills'
+
+    const result = Number(right[field] || 0) - Number(left[field] || 0)
+    return result || String(left.name || '').localeCompare(String(right.name || ''))
+  })
+  return sorted
+}
+
+async function fetchCombinedStats({ search = '', signal } = {}) {
+  const payloads = await Promise.all(STATS_GROUPS.map(async (group) => {
+    const params = new URLSearchParams({
+      group,
+      sort: 'kills',
+      limit: '500',
+    })
+    if (search.trim()) params.set('search', search.trim())
+
+    const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
+      cache: 'no-store',
+      signal,
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
+    return payload || { players: [] }
+  }))
+
+  return mergePlayers(payloads)
 }
 
 function primaryFaction(player) {
@@ -94,12 +239,27 @@ function comparisonValue(metric, player) {
   return player[metric] ?? '—'
 }
 
+function metricLeader(players, metric) {
+  const candidates = metric === 'kd'
+    ? players.filter((player) => Number(player.totalKills || 0) >= 25)
+    : metric === 'cash'
+      ? players.filter((player) => Number(player.cashEarned || 0) > 0)
+      : players
+
+  const sort = {
+    kills: 'kills',
+    deaths: 'deaths',
+    kd: 'kd',
+    cash: 'cash',
+    time: 'time',
+  }[metric]
+  return sortPlayers(candidates, sort)[0] || null
+}
+
 export default function Stats() {
   const [players, setPlayers] = useState([])
   const [comparisonPool, setComparisonPool] = useState([])
-  const [leaders, setLeaders] = useState(null)
-  const [summary, setSummary] = useState(null)
-  const [group, setGroup] = useState('normal')
+  const [comparisonPoolLoaded, setComparisonPoolLoaded] = useState(false)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('kills')
   const [selectedId, setSelectedId] = useState(null)
@@ -110,66 +270,6 @@ export default function Stats() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    setSelectedId(null)
-    setSelectedLookup(null)
-    setCompareId('')
-  }, [group])
-
-  useEffect(() => {
-    let cancelled = false
-    const controller = new AbortController()
-
-    const loadLeaders = async () => {
-      setLeaders(null)
-      const params = new URLSearchParams({ group, leaders: '1' })
-      try {
-        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
-        if (!cancelled) setLeaders(payload?.leaders || {})
-      } catch (fetchError) {
-        if (fetchError.name === 'AbortError') return
-
-        // Older WARCON stats routes do not provide the combined leaders response yet. Keep the
-        // established categories useful while the per-round cash collector is being deployed.
-        try {
-          const requests = [
-            ['kills', 'kills', 1],
-            ['deaths', 'deaths', 1],
-            ['kd', 'kd', 500],
-            ['time', 'time', 1],
-          ]
-          const results = await Promise.all(requests.map(async ([key, order, limit]) => {
-            const fallbackParams = new URLSearchParams({ group, sort: order, limit: String(limit) })
-            const response = await fetch(`${STATS_API_URL}?${fallbackParams.toString()}`, {
-              cache: 'no-store',
-              signal: controller.signal,
-            })
-            if (!response.ok) throw new Error(`Stats API returned ${response.status}`)
-            const payload = await response.json()
-            const player = key === 'kd'
-              ? payload.players?.find((candidate) => Number(candidate.totalKills || 0) >= 25)
-              : payload.players?.[0]
-            return [key, player || null]
-          }))
-          if (!cancelled) setLeaders(Object.fromEntries(results))
-        } catch (fallbackError) {
-          if (!cancelled && fallbackError.name !== 'AbortError') setLeaders({})
-        }
-      }
-    }
-
-    loadLeaders()
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [group])
-
-  useEffect(() => {
     setCompareId('')
   }, [selectedId])
 
@@ -178,22 +278,14 @@ export default function Stats() {
     const controller = new AbortController()
 
     const loadComparisonPool = async () => {
-      const params = new URLSearchParams({
-        group,
-        sort: 'kills',
-        limit: '500',
-      })
-
+      setComparisonPoolLoaded(false)
       try {
-        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
-        if (!cancelled) setComparisonPool(Array.isArray(payload?.players) ? payload.players : [])
+        const combined = await fetchCombinedStats({ signal: controller.signal })
+        if (!cancelled) setComparisonPool(combined)
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') setComparisonPool([])
+      } finally {
+        if (!cancelled) setComparisonPoolLoaded(true)
       }
     }
 
@@ -202,7 +294,7 @@ export default function Stats() {
       cancelled = true
       controller.abort()
     }
-  }, [group])
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -212,34 +304,13 @@ export default function Stats() {
       setLoading(true)
       setError('')
 
-      const apiSort = sort === 'nameDesc' ? 'name' : sort
-      const params = new URLSearchParams({
-        group,
-        sort: apiSort,
-        limit: '500',
-      })
-      if (search.trim()) params.set('search', search.trim())
-
       try {
-        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        const payload = await response.json().catch(() => null)
-
-        if (!response.ok) {
-          throw new Error(payload?.error || `Stats API returned ${response.status}`)
-        }
-
-        if (!cancelled) {
-          setPlayers(Array.isArray(payload?.players) ? payload.players : [])
-          setSummary(payload?.summary || null)
-        }
+        const combined = await fetchCombinedStats({ search, signal: controller.signal })
+        if (!cancelled) setPlayers(sortPlayers(combined, sort))
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') {
           setError(fetchError.message || 'Unable to load player stats')
           setPlayers([])
-          setSummary(null)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -251,12 +322,24 @@ export default function Stats() {
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [group, search, sort])
+  }, [search, sort])
 
-  const displayedPlayers = useMemo(
-    () => sort === 'nameDesc' ? [...players].reverse() : players,
-    [players, sort],
-  )
+  const displayedPlayers = players
+
+  const summary = useMemo(() => {
+    if (!comparisonPoolLoaded) return null
+    return {
+      trackedPlayers: comparisonPool.length,
+      onlinePlayers: comparisonPool.filter((player) => player.online).length,
+      totalKillsRecorded: comparisonPool.reduce((sum, player) => sum + Number(player.totalKills || 0), 0),
+      secondsTracked: comparisonPool.reduce((sum, player) => sum + Number(player.secondsTracked || 0), 0),
+    }
+  }, [comparisonPool, comparisonPoolLoaded])
+
+  const leaders = useMemo(() => {
+    if (!comparisonPoolLoaded) return null
+    return Object.fromEntries(LEADER_METRICS.map((metric) => [metric.key, metricLeader(comparisonPool, metric.key)]))
+  }, [comparisonPool, comparisonPoolLoaded])
 
   const totalHours = useMemo(() => {
     const seconds = Number(summary?.secondsTracked)
@@ -280,21 +363,9 @@ export default function Stats() {
     }
 
     const loadSelectedPlayer = async () => {
-      const params = new URLSearchParams({
-        group,
-        search: selectedId,
-        sort: 'kills',
-        limit: '1',
-      })
-
       try {
-        const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (!response.ok) return
-        const payload = await response.json()
-        if (!cancelled) setSelectedLookup(payload.players?.[0] || null)
+        const combined = await fetchCombinedStats({ search: selectedId, signal: controller.signal })
+        if (!cancelled) setSelectedLookup(combined.find((player) => player.id === selectedId) || null)
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') setSelectedLookup(null)
       }
@@ -305,7 +376,7 @@ export default function Stats() {
       cancelled = true
       controller.abort()
     }
-  }, [group, selectedId, selectedPlayerFromLists])
+  }, [selectedId, selectedPlayerFromLists])
 
   const selectedPlayer = selectedPlayerFromLists
     || (selectedLookup?.id === selectedId ? selectedLookup : null)
@@ -357,20 +428,6 @@ export default function Stats() {
       </section>
 
       <section className="section stats-page">
-        <div className="stats-group-switch" aria-label="Stats ruleset group">
-          {Object.entries(GROUP_LABELS).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={group === key ? 'active' : ''}
-              onClick={() => setGroup(key)}
-            >
-              <span>{label}</span>
-              <small>{GROUP_DESCRIPTIONS[key]}</small>
-            </button>
-          ))}
-        </div>
-
         <div className="stats-summary-grid">
           <article><span>Tracked players</span><strong>{summary?.trackedPlayers ?? '—'}</strong></article>
           <article><span>Online now</span><strong>{summary?.onlinePlayers ?? '—'}</strong></article>
@@ -381,7 +438,7 @@ export default function Stats() {
         <section className="stats-leaders" aria-labelledby="stats-leaders-title">
           <div className="stats-leaders-heading">
             <div>
-              <p className="kicker">Ruleset leaders // {GROUP_LABELS[group]}</p>
+              <p className="kicker">Network leaders // All tracked servers</p>
               <h2 id="stats-leaders-title">Top Players</h2>
             </div>
             <p>Five categories. Five separate records.</p>
@@ -478,7 +535,7 @@ export default function Stats() {
                   </tr>
                 ))}
                 {!loading && !players.length && (
-                  <tr><td colSpan="9" className="stats-empty">No matching players found in {GROUP_LABELS[group]}.</td></tr>
+                  <tr><td colSpan="9" className="stats-empty">No matching players found.</td></tr>
                 )}
               </tbody>
             </table>
@@ -490,7 +547,7 @@ export default function Stats() {
           <article className="player-profile-card" ref={profileRef}>
             <div className="player-profile-heading">
               <div>
-                <p className="kicker">Player Profile // {GROUP_LABELS[group]}</p>
+                <p className="kicker">Player Profile // All tracked servers</p>
                 <h2>{selectedPlayer.name}</h2>
                 <p>{selectedPlayer.id}</p>
               </div>
@@ -598,7 +655,7 @@ export default function Stats() {
         )}
 
         <p className="stats-footnote">
-          Normal statistics cover standard WARDOGS rotations. WARCON automatically classifies a match as Hardcore when its live map or experience contains the Hardcore tag.
+          Player statistics are combined across every tracked 44th WARDOGS server. Hardcore sessions remain preserved in WARCON but are folded into the same public player totals instead of appearing in a separate section.
         </p>
       </section>
     </>

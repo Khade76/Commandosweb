@@ -13,8 +13,8 @@ return [
         'stats_api_key' => 'CHANGE_ME_TO_THE_SAME_PRIVATE_WARCON_STATS_KEY',
     ],
 
-    // Website live-status/RCON connections. Stats grouping is NOT configured per server here;
-    // WARCON classifies Standard vs Hardcore from its recorded match map/experience data.
+    // Website live-status/RCON connections. Stats are presented publicly as one combined
+    // 44th pool even though WARCON may retain its internal Standard/Hardcore classification.
     'servers' => [
         [
             'id' => 'wardogs-278c7bc5',
@@ -33,7 +33,7 @@ return [
             'maxPlayers' => 100,
         ],
         [
-            // Server #3 is now another Bisect-hosted normal server. Replace these placeholders
+            // Server #3 is another Bisect-hosted normal server. Replace these placeholders
             // with the current Bisect allocation/RCON details in the live wardogs-secrets.php.
             'id' => 'wardogs-9f71e8ef',
             'name' => '44th Commandos #3',
@@ -52,6 +52,15 @@ return [
             'joinCode' => '7f15ef51-2673-4eab-b3c8-d8176a3b41e4',
             'region' => 'XRealm',
             'mode' => 'Hardcore',
+        ],
+        [
+            // XRealm ID 12648. Keep the RCON password only in the private live file.
+            'id' => 'wardogs-12648',
+            'name' => '44th Commandos #5 | discord.gg/44thwardogs',
+            'url' => 'http://88.216.222.131:20001',
+            'password' => 'CHANGE_ME_SERVER_5_RCON_PASSWORD',
+            'joinCode' => '3500961c-24df-40b1-b299-6a897eddc2bd',
+            'region' => 'XRealm',
         ],
     ],
 ];

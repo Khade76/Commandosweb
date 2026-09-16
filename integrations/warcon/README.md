@@ -4,18 +4,18 @@ WARCON is the persistent source of truth for `/stats` on `44thwardogs.com`.
 
 The website does not need a separate MariaDB collector when `stats_source` is set to `warcon`. WARCON stores player sessions and match history in its own Postgres/TimescaleDB database, and the website reads the API-key-protected public stats route.
 
-## How Standard vs Hardcore is classified
+## How Standard vs Hardcore is classified internally
 
 Stats are no longer tied to a server number.
 
-All four 44th servers belong in the same WARCON stats source list. The public stats route looks at the WARCON `matches` row that was active when a player session began:
+All five 44th servers belong in the same WARCON stats source list. The WARCON public stats route still classifies each recorded session from the `matches` row that was active when the player session began:
 
-- if the match `map` or `experiences` contains `Hardcore` (for example `KOTH_Hardcore`), that session belongs to **Hardcore**;
-- otherwise it belongs to **Standard**.
+- if the match `map` or `experiences` contains `Hardcore` (for example `KOTH_Hardcore`), that session is internally classified as **Hardcore**;
+- otherwise it is internally classified as **Standard**.
 
-This means any included server can host a Hardcore rotation later without changing the website configuration.
+The public Commandos website no longer shows separate Normal/Hardcore sections. Its Stats page requests both internal groups and combines each SteamID into one public lifetime profile, leaderboard and comparison pool. Keeping the internal split in WARCON preserves the existing history and means no destructive stats migration is required.
 
-Because WARCON player sessions can normally span several matches, `apply-ruleset-session-splits.py` closes/reopens the in-memory player session only when the live ruleset changes Standard <-> Hardcore. That keeps cumulative K/D on the correct ruleset even when a player stays connected through a rotation change. The split is internal stats bookkeeping and does not generate fake player-join triggers.
+Because WARCON player sessions can normally span several matches, `apply-ruleset-session-splits.py` closes/reopens the in-memory player session only when the live ruleset changes Standard <-> Hardcore. That keeps cumulative K/D on the correct internal ruleset even when a player stays connected through a rotation change. The split is internal stats bookkeeping and does not generate fake player-join triggers.
 
 ## 1. Apply cumulative session K/D tracking
 
@@ -99,16 +99,17 @@ docker compose exec -T db psql -U warcon -d warcon -P pager=off \
   -c "SELECT id, name FROM servers ORDER BY sort_order, name;"
 ```
 
-Use the WARCON IDs for all four current 44th servers:
+Use the WARCON IDs for all five current 44th servers:
 
 - 44th Commandos #1
 - 44th Commandos #2
 - 44th Commandos #3
 - 44th Commandos #4 | Hardcore | discord.gg/44thwardogs (XRealm)
+- 44th Commandos #5 | discord.gg/44thwardogs (XRealm)
 
 The route also accepts exact WARCON server names, but IDs are preferred because names may change.
 
-Server #4 is already registered in WARCON. Read its existing ID with the query above; XRealm ID `12577` and website ID `wardogs-12577` are separate identifiers. Do not create a duplicate WARCON server.
+Server #4 is already registered in WARCON. Read its existing ID with the query above; XRealm ID `12577` and website ID `wardogs-12577` are separate identifiers. For Server #5, first check the same query for an existing record before creating anything. Its XRealm ID is `12648` and the website lookup ID is `wardogs-12648`; neither value should be assumed to be its WARCON database ID.
 
 ## 6. Add/update the WARCON environment settings
 
@@ -124,12 +125,12 @@ WARCON `.env` should contain:
 
 ```env
 WARDOGS_STATS_API_KEY=PASTE_THE_RANDOM_TOKEN
-WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID
+WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID,SERVER_5_ID
 ```
 
-`WARDOGS_STATS_SERVERS` replaces the old fixed `WARDOGS_STATS_NORMAL_SERVERS` / `WARDOGS_STATS_HARDCORE_SERVERS` split. The updated route still reads the old variables as a migration fallback, but they should be removed after `WARDOGS_STATS_SERVERS` is confirmed.
+`WARDOGS_STATS_SERVERS` replaces the old fixed `WARDOGS_STATS_NORMAL_SERVERS` / `WARDOGS_STATS_HARDCORE_SERVERS` split. The route still reads the old variables as a migration fallback, but they should be removed after `WARDOGS_STATS_SERVERS` is confirmed.
 
-For an existing installation, preserve the current API key and server references and append #4's resolved WARCON ID. If only the legacy lists are present, retain their combined references when setting the new list. The match ruleset determines Normal/Hardcore membership; this update does not rewrite historical sessions.
+For an existing installation, preserve the current API key and the four existing server references, then append Server #5's resolved WARCON ID (or exact WARCON server name). The live match ruleset still determines the internal Standard/Hardcore classification; the website combines those records for display and this update does not rewrite historical sessions.
 
 Do not prefix the private values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for client-exposed configuration, while this API key must remain server-only.
 
@@ -170,7 +171,7 @@ A working response contains:
 }
 ```
 
-Test Hardcore as well:
+Test the internal Hardcore pool as well because the website combines both responses:
 
 ```bash
 curl -sS \
@@ -195,7 +196,7 @@ The private `wardogs-secrets.php` above `/www` should keep WARCON selected:
 
 The browser never receives the WARCON API key. `/api/player-stats.php` on OVH adds it server-side.
 
-Server #3's website/RCON status entry also needs to contain its new Bisect connection details now that it is no longer hosted by Qonzer. That is separate from WARCON stats grouping.
+Server #5's website/RCON status entry must also be added to the private `wardogs-secrets.php` using XRealm ID `12648`, RCON endpoint `88.216.222.131:20001`, the persistent join code `3500961c-24df-40b1-b299-6a897eddc2bd`, and the real Server #5 RCON password. The repository example contains the complete non-secret record.
 
 ## 10. Verify the website source
 
@@ -211,13 +212,14 @@ The JSON should contain:
 "source": "warcon"
 ```
 
-Then test:
+Then test the internal Hardcore endpoint as well:
 
 ```text
 https://44thwardogs.com/api/player-stats.php?group=hardcore&limit=5
 ```
 
-Finally open `/stats`. The tabs should describe **Standard** and **Hardcore rulesets**, not specific server numbers.
+Finally open `/stats`. There should be one combined 44th player-stats view with no separate Hardcore section. A player who has records in both internal groups should appear once with combined kills, deaths, matches and tracked time.
+
 ## Best cash earned in one round
 
 The Commandosweb cash leaderboard is a single-round record, not current wallet balance and not

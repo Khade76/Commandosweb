@@ -279,6 +279,9 @@ export default function Stats() {
 
     const loadComparisonPool = async () => {
       setComparisonPoolLoaded(false)
+      setComparisonPool([])
+      setSummary(null)
+      setLeaders(null)
       try {
         const payload = await fetchStatsPayload({ range, signal: controller.signal })
         if (!cancelled) {
@@ -312,6 +315,7 @@ export default function Stats() {
     const timer = window.setTimeout(async () => {
       setLoading(true)
       setError('')
+      setPlayers([])
 
       try {
         const payload = await fetchStatsPayload({ search, sort, range, signal: controller.signal })
@@ -458,7 +462,7 @@ export default function Stats() {
                 >
                   <span className="stats-leader-index">{metric.index}</span>
                   <span className="stats-leader-label">{metric.label}</span>
-                  <strong>{leader?.name || (leaders ? 'Unavailable' : 'Calculating…')}</strong>
+                  <strong>{leader?.name || (leaders ? metric.key === 'seeded' ? 'No seed time recorded' : 'Unavailable' : 'Calculating…')}</strong>
                   <em>{leader ? metric.value(leader) : '—'}</em>
                   <small>Minimum 60 minutes played</small>
                 </button>

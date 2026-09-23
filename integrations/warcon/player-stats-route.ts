@@ -221,7 +221,7 @@ export const GET = route(async (event) => {
 				UNION ALL (SELECT 'kd', * FROM eligible ORDER BY CASE WHEN deaths > 0 THEN kills::float / deaths WHEN kills > 0 THEN kills::float ELSE NULL END DESC NULLS LAST, kills DESC, steam_id LIMIT 1)
 				UNION ALL (SELECT 'perHour', * FROM eligible ORDER BY CASE WHEN minutes > 0 THEN kills::float / (minutes / 60) ELSE NULL END DESC NULLS LAST, kills DESC, steam_id LIMIT 1)
 				UNION ALL (SELECT 'time', * FROM eligible ORDER BY minutes DESC, kills DESC, steam_id LIMIT 1)
-				UNION ALL (SELECT 'seeded', * FROM eligible ORDER BY seed_minutes DESC, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'seeded', * FROM eligible WHERE seed_minutes > 0 ORDER BY seed_minutes DESC, kills DESC, steam_id LIMIT 1)
 				UNION ALL (SELECT 'matches', * FROM eligible ORDER BY matches DESC, kills DESC, steam_id LIMIT 1)
 				UNION ALL (SELECT 'wins', * FROM eligible ORDER BY wins DESC, kills DESC, steam_id LIMIT 1)
 				UNION ALL (SELECT 'winRate', * FROM eligible ORDER BY CASE WHEN wins + losses + draws > 0 THEN wins::float / (wins + losses + draws) ELSE NULL END DESC NULLS LAST, kills DESC, steam_id LIMIT 1)
@@ -274,7 +274,12 @@ export const GET = route(async (event) => {
 		FROM page a
 	`);
 	const [countRow] = await env.db.execute<{ total: string }>(sql`
-		WITH ${base} SELECT COUNT(*) AS total FROM a WHERE ${searchWhere}
+		WITH player_ids AS (
+			SELECT steam_id FROM player_sessions WHERE server_id IN (${sqlList(ids)}) AND last_seen >= ${from}
+			UNION SELECT killer_steam_id FROM kills WHERE server_id IN (${sqlList(ids)}) AND ts >= ${from} AND killer_steam_id IS NOT NULL
+			UNION SELECT victim_steam_id FROM kills WHERE server_id IN (${sqlList(ids)}) AND ts >= ${from} AND victim_steam_id IS NOT NULL
+		)
+		SELECT COUNT(*) AS total FROM player_ids a WHERE ${searchWhere}
 	`);
 	const [summary] = await env.db.execute<{
 		trackedPlayers: string; onlinePlayers: string; totalKills: string; totalDeaths: string;

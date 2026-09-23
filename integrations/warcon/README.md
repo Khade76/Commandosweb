@@ -2,6 +2,10 @@
 
 WARCON is the persistent source of truth for `/stats` on `44thwardogs.com`.
 
+The current route reads the same kill feed, match outcomes and session fields as WARCON's leaderboard. It aggregates Servers #1–#5 by default, or one server with `server=1` through `server=5`. `range=7d|30d|90d|all` and `sort=kills|deaths|kd|perHour|time|seeded|matches|wins|winRate|cash` match WARCON's leaderboard choices. The website and Discord bot use all-time unless a website visitor selects another period. Leader cards apply WARCON's 60-minute minimum playtime.
+
+The older Standard/Hardcore split and `cash_earned` patch instructions below are historical and are not required by the current route. Cash now means WARCON's sum of session cash; kills and deaths come from kill-feed events. Historical Hardcore events remain in all-time totals.
+
 The website does not need a separate MariaDB collector when `stats_source` is set to `warcon`. WARCON stores player sessions and match history in its own Postgres/TimescaleDB database, and the website reads the API-key-protected public stats route.
 
 ## How Standard vs Hardcore is classified internally
@@ -167,7 +171,7 @@ A working response contains:
   "group": "all",
   "players": [],
   "summary": {},
-  "source": "warcon"
+  "source": "warcon-leaderboard"
 }
 ```
 
@@ -209,7 +213,7 @@ https://44thwardogs.com/api/player-stats.php?group=all&limit=5
 The JSON should contain:
 
 ```json
-"source": "warcon"
+"source": "warcon-leaderboard"
 ```
 
 Then test each numbered server:
@@ -218,12 +222,11 @@ Then test each numbered server:
 https://44thwardogs.com/api/player-stats.php?group=all&server=4&limit=5
 ```
 
-Finally open `/stats`. There should be one combined 44th player-stats view with no separate Hardcore section. A player who has records in both internal groups should appear once with combined kills, deaths, matches and tracked time.
+Finally open `/stats`. There should be one combined 44th player-stats view with no separate Hardcore section. Compare one server-scoped player row with WARCON's own leaderboard for that server and the same period.
 
-## Best cash earned in one round
+## Historical cash-earned patch (not used by the current leaderboard route)
 
-The Commandosweb cash leaderboard is a single-round record, not current wallet balance and not
-lifetime income. After applying the session-delta and ruleset-split patches, apply the round split:
+An older stats route used a single-round cash-earned record. Its optional patch sequence was:
 
 ```bash
 python3 /path/to/Commandosweb/integrations/warcon/apply-round-session-splits.py
@@ -232,5 +235,4 @@ python3 /path/to/Commandosweb/integrations/warcon/apply-round-session-splits.py
 Then apply `apply-cash-earned.py`. The match-clock reset closes the old public-stat sessions and
 opens fresh ones without generating join notifications. Positive cash deltas are accumulated within
 that round, so spending does not reduce the recorded earnings. The stats route uses the greatest
-single `cash_earned` session for each player. Tracking begins when this integration is deployed;
-historical rounds are not backfilled.
+single `cash_earned` session for each player. The current route ignores that column and instead follows WARCON's leaderboard cash calculation.

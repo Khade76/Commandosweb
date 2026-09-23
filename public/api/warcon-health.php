@@ -75,7 +75,7 @@ try {
         $result['warcon']['resolvedAddress'] = $resolved !== $host ? $resolved : null;
     }
 
-    $url = $baseUrl . '/api/public/player-stats?group=normal&limit=1';
+    $url = $baseUrl . '/api/public/player-stats?group=all&limit=1';
 
     if (function_exists('curl_init')) {
         $curl = curl_init($url);

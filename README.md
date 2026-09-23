@@ -76,7 +76,8 @@ WARCON is the target single source of truth for player search/statistics:
 WARDOGS #1 ─┐
 WARDOGS #2 ─┼──► WARCON ─► Postgres / TimescaleDB
 WARDOGS #3 ─┤                    │
-WARDOGS #4 ─┘                    │
+WARDOGS #4 ─┤                    │
+WARDOGS #5 ─┘                    │
                                  │ read-only API key
                                  ▼
                               OVH PHP
@@ -88,14 +89,7 @@ WARDOGS #4 ─┘                    │
                               /stats
 ```
 
-Normal and Hardcore remain separate:
-
-```text
-Normal   = sessions recorded during Standard matches
-Hardcore = sessions recorded during Hardcore matches
-```
-
-WARCON already stores player sessions, names, factions, join/leave times, matches and online state. The 44th integration adds a read-only, API-key-protected endpoint for lifetime player search and combined server-group totals.
+WARCON stores sessions, kill-feed events and match history. The 44th read-only endpoint aggregates all five servers by default and accepts `server=1` through `server=5`. It uses WARCON leaderboard rules for kills, deaths, match results, playtime, seed time and cash. Historical Hardcore activity remains in all-time totals.
 
 The integration is under:
 
@@ -135,7 +129,7 @@ WARDOGS_STATS_API_KEY=LONG_RANDOM_SECRET
 WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID,SERVER_5_ID
 ```
 
-The integration adjusts WARCON session tracking so kills/deaths accumulate across WARDOGS match counter resets while a player remains connected. It also records positive cash deltas from 15 September 2026 onward for the website's Cash Earned leaderboard; historical cash is deliberately not estimated.
+The website offers the same 7-day, 30-day, 90-day and all-time periods as WARCON. Cash is WARCON's sum of recorded session cash, not a wallet balance or earned-income measure.
 
 ## Temporary MariaDB fallback
 
@@ -188,6 +182,4 @@ https://github.com/Khade76/44th-wardogs-discord-bots
 - `/donate`
 
 The WARDOGS game link points to the official Steam page. This community website is not affiliated with BULKHEAD or Team17.
-The stats page's Cash Earned leader is the highest positive cash total earned by one player in one
-round. It is tracked forward from 15 September 2026; current wallet balances and older rounds are
-not treated as earnings.
+The stats page uses WARCON's leaderboard data and all five servers for its global view.

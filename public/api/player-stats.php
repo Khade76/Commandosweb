@@ -15,14 +15,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 require_once __DIR__ . '/stats-db.php';
 
-$allowedSorts = ['kills', 'deaths', 'kd', 'cash', 'time', 'matches', 'lastSeen', 'name'];
-$allowedGroups = ['all', 'normal', 'hardcore'];
+$allowedSorts = ['kills', 'deaths', 'kd', 'perHour', 'cash', 'time', 'seeded', 'matches', 'wins', 'winRate', 'lastSeen', 'name'];
 
 $search = isset($_GET['search']) ? substr(trim((string)$_GET['search']), 0, 80) : '';
 $sort = isset($_GET['sort']) ? (string)$_GET['sort'] : 'kills';
 if (!in_array($sort, $allowedSorts, true)) $sort = 'kills';
-$group = isset($_GET['group']) ? strtolower((string)$_GET['group']) : 'all';
-if (!in_array($group, $allowedGroups, true)) $group = 'all';
+$group = 'all';
+$range = isset($_GET['range']) ? (string)$_GET['range'] : 'all';
+if (!in_array($range, ['7d', '30d', '90d', 'all'], true)) $range = 'all';
 $server = isset($_GET['server']) ? trim((string)$_GET['server']) : '';
 if ($server !== '' && !preg_match('/^[1-5]$/', $server)) {
     http_response_code(400);
@@ -105,6 +105,7 @@ try {
     $config = wardogsStatsConfig();
     $query = [
         'group' => $group,
+        'range' => $range,
         'sort' => $sort,
         'limit' => $limit,
         'offset' => $offset,

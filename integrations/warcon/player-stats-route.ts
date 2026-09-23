@@ -4,440 +4,311 @@ import { sql } from 'drizzle-orm';
 import { getEnv } from '$lib/server/env';
 import { ApiError, apiJson, int, route, str } from '$lib/server/http';
 
-const GROUPS = ['all', 'normal', 'hardcore'] as const;
-type StatsGroup = (typeof GROUPS)[number];
-
-function bearerToken(request: Request): string {
-	const value = request.headers.get('authorization') || '';
-	const match = /^Bearer\s+(.+)$/i.exec(value.trim());
-	return match?.[1]?.trim() || '';
-}
-
-function secretMatches(expected: string, actual: string): boolean {
-	const a = Buffer.from(expected);
-	const b = Buffer.from(actual);
-	return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
-}
-
-function groupFrom(value: string | null): StatsGroup {
-	return value === 'hardcore' || value === 'normal' ? value : 'all';
-}
-
-/**
- * Resolve all five numbered servers from WARCON. The old NORMAL/HARDCORE variables remain
- * a migration fallback, but the route refuses a partial global total if either list is stale.
- */
-function configuredServerRefs(): string[] {
-	const explicit = (privateEnv.WARDOGS_STATS_SERVERS || '').trim();
-	const legacy = [
-		privateEnv.WARDOGS_STATS_NORMAL_SERVERS || '',
-		privateEnv.WARDOGS_STATS_HARDCORE_SERVERS || ''
-	]
-		.filter(Boolean)
-		.join(',');
-
-	return [...new Set((explicit || legacy)
-		.split(',')
-		.map((value) => value.trim())
-		.filter(Boolean))];
-}
-
 function finite(value: unknown): number {
 	const n = Number(value ?? 0);
 	return Number.isFinite(n) ? n : 0;
-}
-
-function objectNumbers(value: unknown): Record<string, number> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>).map(([key, count]) => [key, finite(count)])
-	);
-}
-
-function stringArray(value: unknown): string[] {
-	return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
 function sqlList(values: string[]) {
 	return sql.join(values.map((value) => sql`${value}`), sql`, `);
 }
 
+function stringArray(value: unknown): string[] {
+	return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function objectNumbers(value: unknown): Record<string, number> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+	return Object.fromEntries(Object.entries(value).map(([key, count]) => [key, finite(count)]));
+}
+
+function configuredServerRefs(): string[] {
+	const explicit = (privateEnv.WARDOGS_STATS_SERVERS || '').trim();
+	const legacy = [privateEnv.WARDOGS_STATS_NORMAL_SERVERS || '', privateEnv.WARDOGS_STATS_HARDCORE_SERVERS || '']
+		.filter(Boolean).join(',');
+	return [...new Set((explicit || legacy).split(',').map((value) => value.trim()).filter(Boolean))];
+}
+
+function authorized(request: Request): boolean {
+	const expected = (privateEnv.WARDOGS_STATS_API_KEY || '').trim();
+	const match = /^Bearer\s+(.+)$/i.exec((request.headers.get('authorization') || '').trim());
+	const actual = (match?.[1] || '').trim();
+	const a = Buffer.from(expected);
+	const b = Buffer.from(actual);
+	return expected.length >= 20 && a.length === b.length && timingSafeEqual(a, b);
+}
+
+type StatsRow = Record<string, unknown> & {
+	steamId: string; name: string | null; aliases: unknown;
+	firstSeen: Date | null; lastSeen: Date | null;
+	kills: string; deaths: string; headshots: string; teamKills: string; suicides: string;
+	matches: string; wins: string; losses: string; draws: string;
+	minutes: string; seedMinutes: string; cash: string; sessions: string;
+	online: boolean; currentServer: string | null; currentFaction: string | null;
+	currentCash: string | null; factionCounts: unknown; serverCounts: unknown; serversPlayed: unknown;
+};
+
+// Keep the aggregates and match outcome rule aligned with WARCON's
+// $lib/server/leaderboards.ts. The route is installed independently of WARCON releases.
+function boardBase(ids: string[], from: Date) {
+	const selected = sqlList(ids);
+	return sql`
+		s AS (
+			SELECT id, server_id, steam_id, faction, joined_at, COALESCE(left_at, now()) AS left_at, last_seen
+			FROM player_sessions WHERE server_id IN (${selected}) AND last_seen >= ${from}
+		),
+		sess AS (
+			SELECT steam_id,
+				SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - GREATEST(joined_at, ${from}::timestamptz)))) / 60 AS minutes,
+				SUM(seed_seconds) / 60.0 AS seed_minutes, SUM(cash) AS cash,
+				MIN(joined_at) AS first_seen, MAX(last_seen) AS last_seen,
+				COUNT(*) AS sessions, BOOL_OR(left_at IS NULL) AS online
+			FROM player_sessions WHERE server_id IN (${selected}) AND last_seen >= ${from}
+			GROUP BY steam_id
+		),
+		kl AS (
+			SELECT killer_steam_id AS steam_id,
+				COUNT(*) FILTER (WHERE NOT suicide) AS kills,
+				COUNT(*) FILTER (WHERE headshot AND NOT suicide) AS headshots,
+				COUNT(*) FILTER (WHERE team_kill) AS team_kills,
+				MAX(ts) AS first_kill
+			FROM kills WHERE server_id IN (${selected}) AND ts >= ${from} AND killer_steam_id IS NOT NULL
+			GROUP BY killer_steam_id
+		),
+		dt AS (
+			SELECT victim_steam_id AS steam_id, COUNT(*) AS deaths,
+				COUNT(*) FILTER (WHERE suicide) AS suicides, MAX(ts) AS first_death
+			FROM kills WHERE server_id IN (${selected}) AND ts >= ${from} AND victim_steam_id IS NOT NULL
+			GROUP BY victim_steam_id
+		),
+		bounds AS (
+			SELECT s.*, a.id AS last_id,
+				CASE WHEN p.id IS NOT NULL AND COALESCE(p.ended_at, now()) > s.joined_at THEN p.id ELSE n.id END AS first_id
+			FROM s
+			LEFT JOIN LATERAL (SELECT id FROM matches m WHERE m.server_id = s.server_id AND m.started_at < s.left_at
+				ORDER BY m.started_at DESC LIMIT 1) a ON true
+			LEFT JOIN LATERAL (SELECT id, ended_at FROM matches m WHERE m.server_id = s.server_id AND m.started_at <= s.joined_at
+				ORDER BY m.started_at DESC LIMIT 1) p ON true
+			LEFT JOIN LATERAL (SELECT id FROM matches m WHERE m.server_id = s.server_id AND m.started_at > s.joined_at
+				ORDER BY m.started_at LIMIT 1) n ON true
+		),
+		pairs AS (
+			SELECT DISTINCT ON (b.steam_id, m.id) b.steam_id, m.id AS match_id,
+				CASE WHEN b.faction IS NULL THEN NULL
+					WHEN m.winner IS NOT NULL THEN CASE WHEN m.winner = b.faction THEN 'win' ELSE 'loss' END
+					WHEN jsonb_typeof(m.final_scores) = 'array'
+						AND (SELECT MAX((e->>'score')::numeric) FROM jsonb_array_elements(m.final_scores) e) > 0 THEN 'draw'
+					ELSE NULL END AS result
+			FROM bounds b JOIN matches m ON m.server_id = b.server_id AND m.id BETWEEN b.first_id AND b.last_id
+			WHERE b.first_id <= b.last_id AND m.started_at >= ${from}
+			ORDER BY b.steam_id, m.id, b.last_seen DESC
+		),
+		mt AS (
+			SELECT steam_id, COUNT(*) AS matches,
+				COUNT(*) FILTER (WHERE result = 'win') AS wins,
+				COUNT(*) FILTER (WHERE result = 'loss') AS losses,
+				COUNT(*) FILTER (WHERE result = 'draw') AS draws
+			FROM pairs GROUP BY steam_id
+		),
+		a AS (
+			SELECT steam_id,
+				COALESCE(sess.minutes, 0) AS minutes, COALESCE(sess.seed_minutes, 0) AS seed_minutes,
+				COALESCE(sess.cash, 0) AS cash, sess.first_seen,
+				COALESCE(sess.last_seen, kl.first_kill, dt.first_death) AS last_seen,
+				COALESCE(sess.sessions, 0) AS sessions, COALESCE(sess.online, false) AS online,
+				COALESCE(kl.kills, 0) AS kills, COALESCE(kl.headshots, 0) AS headshots,
+				COALESCE(kl.team_kills, 0) AS team_kills,
+				COALESCE(dt.deaths, 0) AS deaths, COALESCE(dt.suicides, 0) AS suicides,
+				COALESCE(mt.matches, 0) AS matches, COALESCE(mt.wins, 0) AS wins,
+				COALESCE(mt.losses, 0) AS losses, COALESCE(mt.draws, 0) AS draws
+			FROM sess FULL JOIN kl USING (steam_id) FULL JOIN dt USING (steam_id) FULL JOIN mt USING (steam_id)
+		)
+	`;
+}
+
+function rowToPlayer(row: StatsRow, server: number | null) {
+	const kills = finite(row.kills);
+	const deaths = finite(row.deaths);
+	const minutes = finite(row.minutes);
+	const rawCounts = objectNumbers(row.serverCounts);
+	const serverCounts: Record<string, number> = {};
+	for (const [name, count] of Object.entries(rawCounts)) {
+		const match = /#(\d+)/.exec(name);
+		serverCounts[match ? `server-${match[1]}` : name] = count;
+	}
+	const currentServerName = row.currentServer || null;
+	const currentServerMatch = currentServerName ? /#(\d+)/.exec(currentServerName) : null;
+	const wins = finite(row.wins), losses = finite(row.losses), draws = finite(row.draws);
+	return {
+		id: row.steamId, name: row.name || row.steamId, group: 'all', server,
+		aliases: stringArray(row.aliases).filter((name) => name !== row.name),
+		firstSeen: row.firstSeen ? new Date(row.firstSeen).toISOString() : null,
+		lastSeen: row.lastSeen ? new Date(row.lastSeen).toISOString() : null,
+		online: Boolean(row.online),
+		currentServer: currentServerMatch ? Number(currentServerMatch[1]) : null,
+		currentServerName, currentFaction: row.currentFaction || null,
+		currentCash: row.currentCash === null ? null : finite(row.currentCash),
+		cash: finite(row.cash), totalKills: kills, totalDeaths: deaths,
+		kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
+		killsPerHour: minutes > 0 ? Number((kills / (minutes / 60)).toFixed(2)) : null,
+		headshots: finite(row.headshots), teamKills: finite(row.teamKills), suicides: finite(row.suicides),
+		wins, losses, draws, winRate: wins + losses + draws > 0 ? wins / (wins + losses + draws) : null,
+		sessionsSeen: finite(row.sessions), matchesSeen: finite(row.matches),
+		secondsTracked: Math.round(minutes * 60), seedMinutes: Math.round(finite(row.seedMinutes)),
+		factionCounts: objectNumbers(row.factionCounts), serverCounts,
+		serversPlayed: stringArray(row.serversPlayed)
+	};
+}
+
 export const GET = route(async (event) => {
 	const expected = (privateEnv.WARDOGS_STATS_API_KEY || '').trim();
 	if (expected.length < 20) throw new ApiError(503, 'Public stats API is not configured.');
-	if (!secretMatches(expected, bearerToken(event.request))) throw new ApiError(401, 'Unauthorized.');
+	if (!authorized(event.request)) throw new ApiError(401, 'Unauthorized.');
 
-	const env = getEnv();
-	const group = groupFrom(event.url.searchParams.get('group'));
-	const serverNumber = event.url.searchParams.get('server');
-	if (serverNumber !== null && !/^[1-5]$/.test(serverNumber)) {
-		throw new ApiError(400, 'Server must be a number from 1 to 5.');
-	}
+	const serverValue = event.url.searchParams.get('server');
+	if (serverValue !== null && !/^[1-5]$/.test(serverValue)) throw new ApiError(400, 'Server must be 1 to 5.');
+	const server = serverValue ? Number(serverValue) : null;
 	const refs = configuredServerRefs();
-	if (!refs.length) throw new ApiError(503, 'No WARDOGS servers are configured for public stats.');
-
-	const serverRows = await env.db.execute<{ id: string; name: string }>(sql`
+	if (refs.length !== 5) throw new ApiError(503, 'All five WARDOGS servers must be configured.');
+	const env = getEnv();
+	const resolved = await env.db.execute<{ id: string; name: string }>(sql`
 		SELECT id, name FROM servers WHERE id IN (${sqlList(refs)}) OR name IN (${sqlList(refs)})
 	`);
-	const byId = new Map(serverRows.map((server) => [server.id, server]));
-	const byName = new Map(serverRows.map((server) => [server.name, server]));
-	const resolved = refs.map((ref) => byId.get(ref) ?? byName.get(ref)).filter(Boolean) as {
-		id: string;
-		name: string;
-	}[];
-	const allServerIds = [...new Set(resolved.map((server) => server.id))];
-	if (!allServerIds.length || allServerIds.length !== refs.length) {
-		const found = new Set(resolved.flatMap((server) => [server.id, server.name]));
-		const missing = refs.filter((ref) => !found.has(ref));
-		throw new ApiError(503, `Unknown public stats server reference(s): ${missing.join(', ')}`);
+	const byId = new Map(resolved.map((row) => [row.id, row]));
+	const byName = new Map(resolved.map((row) => [row.name, row]));
+	const configured = refs.map((ref) => byId.get(ref) ?? byName.get(ref));
+	if (configured.some((row) => !row) || new Set(configured.map((row) => row?.id)).size !== 5) {
+		throw new ApiError(503, 'WARDOGS stats server configuration is incomplete.');
 	}
-	const numberedServers = [1, 2, 3, 4, 5].map((number) => {
-		const matches = resolved.filter((server) => new RegExp(`#${number}(?!\\d)`).test(server.name));
-		if (matches.length !== 1) {
-			throw new ApiError(503, `WARDOGS Server #${number} is missing or ambiguous in WARCON stats configuration.`);
-		}
-		return matches[0];
+	const numbered = [1, 2, 3, 4, 5].map((number) => {
+		const found = configured.filter((row) => new RegExp(`#${number}(?!\\d)`).test(row!.name));
+		if (found.length !== 1) throw new ApiError(503, `WARDOGS Server #${number} is missing or ambiguous.`);
+		return found[0]!;
 	});
-	const selectedServers = serverNumber ? [numberedServers[Number(serverNumber) - 1]] : numberedServers;
-	const serverIds = selectedServers.map((server) => server.id);
-	const [cashColumn] = await env.db.execute<{ available: boolean }>(sql`
-		SELECT EXISTS (
-			SELECT 1 FROM information_schema.columns
-			WHERE table_schema = 'public' AND table_name = 'player_sessions' AND column_name = 'cash_earned'
-		) AS available
-	`);
-	const cashEarnedSql = cashColumn?.available
-		? sql`COALESCE(MAX(s.cash_earned), 0)::bigint`
-		: sql`0::bigint`;
-
+	const ids = server ? [numbered[server - 1].id] : numbered.map((row) => row.id);
+	const range = event.url.searchParams.get('range') || 'all';
+	const durations: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90 };
+	if (range !== 'all' && !(range in durations)) throw new ApiError(400, 'Invalid leaderboard range.');
+	const from = range === 'all' ? new Date(0) : new Date(Date.now() - durations[range] * 86400_000);
+	const base = boardBase(ids, from);
 	const search = str(event.url.searchParams.get('search'), 80);
 	const pattern = `%${search}%`;
+	const searchWhere = search ? sql`(a.steam_id ILIKE ${pattern} OR EXISTS (
+		SELECT 1 FROM player_sessions x WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) AND x.name ILIKE ${pattern}
+	))` : sql`true`;
 	const sort = str(event.url.searchParams.get('sort') || 'kills', 20);
+	const sorts: Record<string, ReturnType<typeof sql>> = {
+		kills: sql`a.kills DESC, a.deaths ASC`, deaths: sql`a.deaths DESC, a.kills DESC`,
+		kd: sql`(CASE WHEN a.deaths > 0 THEN a.kills::float / a.deaths WHEN a.kills > 0 THEN a.kills::float ELSE NULL END) DESC NULLS LAST, a.kills DESC`,
+		perHour: sql`(CASE WHEN a.minutes > 0 THEN a.kills::float / (a.minutes / 60) ELSE NULL END) DESC NULLS LAST, a.kills DESC`,
+		time: sql`a.minutes DESC, a.kills DESC`, playtime: sql`a.minutes DESC, a.kills DESC`,
+		seeded: sql`a.seed_minutes DESC, a.kills DESC`, matches: sql`a.matches DESC, a.kills DESC`,
+		wins: sql`a.wins DESC, a.kills DESC`,
+		winRate: sql`(CASE WHEN a.wins + a.losses + a.draws > 0 THEN a.wins::float / (a.wins + a.losses + a.draws) ELSE NULL END) DESC NULLS LAST, a.kills DESC`,
+		cash: sql`a.cash DESC, a.kills DESC`, lastSeen: sql`a.last_seen DESC NULLS LAST`,
+		name: sql`(SELECT x.name FROM player_sessions x WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) ORDER BY x.last_seen DESC LIMIT 1) ASC NULLS LAST`
+	};
+	if (!(sort in sorts)) throw new ApiError(400, 'Invalid leaderboard sort.');
 	const limit = int(event.url.searchParams.get('limit'), 100, 1, 500);
 	const offset = int(event.url.searchParams.get('offset'), 0, 0, 100000);
 
-	const searchFilter = search
-		? sql`(s.steam_id ILIKE ${pattern} OR EXISTS (
-			SELECT 1 FROM scoped names
-			WHERE names.steam_id = s.steam_id AND names.name ILIKE ${pattern}
-		))`
-		: sql`true`;
-
-	const orderBy =
-		sort === 'deaths'
-			? sql`a.total_deaths DESC, a.total_kills DESC`
-			: sort === 'kd'
-				? sql`(CASE WHEN a.total_deaths > 0 THEN a.total_kills::numeric / a.total_deaths ELSE a.total_kills END) DESC, a.total_kills DESC`
-			: sort === 'cash'
-				? sql`a.total_cash_earned DESC, a.total_kills DESC`
-				: sort === 'time'
-					? sql`a.seconds_tracked DESC`
-					: sort === 'matches'
-						? sql`a.sessions DESC`
-						: sort === 'lastSeen'
-							? sql`a.last_seen DESC`
-							: sort === 'name'
-								? sql`name ASC`
-								: sql`a.total_kills DESC, a.total_deaths ASC`;
-
-	// Global totals need no match lookup. Historical ruleset filters classify each session
-	// from the WARCON match active when that session began.
-	// apply-ruleset-session-splits.py makes a new session whenever the live ruleset flips, so a
-	// player who stays connected across Standard -> Hardcore does not move their earlier totals.
-	const classifiedSessions = group === 'all' ? sql`
-		SELECT ps.*, srv.name AS server_name, 'all'::text AS stats_group
-		FROM player_sessions ps
-		INNER JOIN servers srv ON srv.id = ps.server_id
-		WHERE ps.server_id IN (${sqlList(serverIds)})
-	` : sql`
-		SELECT
-			ps.*,
-			srv.name AS server_name,
-			CASE
-				WHEN LOWER(COALESCE(match_at_join.map, '')) LIKE '%hardcore%'
-					OR LOWER(COALESCE(match_at_join.experiences, '')) LIKE '%hardcore%'
-				THEN 'hardcore'
-				ELSE 'normal'
-			END AS stats_group
-		FROM player_sessions ps
-		INNER JOIN servers srv ON srv.id = ps.server_id
-		LEFT JOIN LATERAL (
-			SELECT m.map, m.experiences
-			FROM matches m
-			WHERE m.server_id = ps.server_id
-				AND m.started_at <= ps.joined_at
-				AND COALESCE(m.ended_at, 'infinity'::timestamptz) >= ps.joined_at
-			ORDER BY m.started_at DESC
-			LIMIT 1
-		) match_at_join ON true
-		WHERE ps.server_id IN (${sqlList(serverIds)})
-	`;
-
-	const matchGroupFilter =
-		group === 'hardcore'
-			? sql`(
-				LOWER(COALESCE(m.map, '')) LIKE '%hardcore%'
-				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
-			)`
-			: group === 'all' ? sql`true` : sql`NOT (
-				LOWER(COALESCE(m.map, '')) LIKE '%hardcore%'
-				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
-			)`;
-
 	if (event.url.searchParams.get('leaders') === '1') {
-		const leaderRows = await env.db.execute<{
-			metric: string;
-			steamId: string;
-			name: string;
-			totalKills: string | number;
-			totalDeaths: string | number;
-			cashEarned: string | number;
-			secondsTracked: string | number;
-		}>(sql`
-			WITH classified AS (${classifiedSessions}),
-			scoped AS NOT MATERIALIZED (SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`}),
-			totals AS (
-				SELECT
-					steam_id,
-					SUM(kills)::bigint AS total_kills,
-					SUM(deaths)::bigint AS total_deaths,
-					${cashEarnedSql} AS cash_earned,
-					SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - joined_at)))::bigint AS seconds_tracked
-				FROM scoped s
-				GROUP BY steam_id
-			),
+		const leadersRaw = await env.db.execute<StatsRow & { metric: string }>(sql`
+			WITH ${base}, eligible AS (SELECT * FROM a WHERE minutes >= 60),
 			leaders AS (
-				(SELECT 'kills'::text AS metric, t.* FROM totals t ORDER BY total_kills DESC, total_deaths ASC, steam_id LIMIT 1)
-				UNION ALL
-				(SELECT 'deaths'::text AS metric, t.* FROM totals t ORDER BY total_deaths DESC, total_kills DESC, steam_id LIMIT 1)
-				UNION ALL
-				(SELECT 'kd'::text AS metric, t.* FROM totals t WHERE total_kills >= 25 ORDER BY (CASE WHEN total_deaths > 0 THEN total_kills::numeric / total_deaths ELSE total_kills END) DESC, total_kills DESC, steam_id LIMIT 1)
-				UNION ALL
-				(SELECT 'cash'::text AS metric, t.* FROM totals t WHERE cash_earned > 0 ORDER BY cash_earned DESC, total_kills DESC, steam_id LIMIT 1)
-				UNION ALL
-				(SELECT 'time'::text AS metric, t.* FROM totals t ORDER BY seconds_tracked DESC, total_kills DESC, steam_id LIMIT 1)
+				(SELECT 'kills'::text AS metric, * FROM eligible ORDER BY kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'deaths', * FROM eligible ORDER BY deaths DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'kd', * FROM eligible ORDER BY CASE WHEN deaths > 0 THEN kills::float / deaths WHEN kills > 0 THEN kills::float ELSE NULL END DESC NULLS LAST, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'perHour', * FROM eligible ORDER BY CASE WHEN minutes > 0 THEN kills::float / (minutes / 60) ELSE NULL END DESC NULLS LAST, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'time', * FROM eligible ORDER BY minutes DESC, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'seeded', * FROM eligible ORDER BY seed_minutes DESC, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'matches', * FROM eligible ORDER BY matches DESC, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'wins', * FROM eligible ORDER BY wins DESC, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'winRate', * FROM eligible ORDER BY CASE WHEN wins + losses + draws > 0 THEN wins::float / (wins + losses + draws) ELSE NULL END DESC NULLS LAST, kills DESC, steam_id LIMIT 1)
+				UNION ALL (SELECT 'cash', * FROM eligible ORDER BY cash DESC, kills DESC, steam_id LIMIT 1)
 			)
-			SELECT
-				l.metric,
-				l.steam_id AS "steamId",
-				(SELECT x.name FROM scoped x WHERE x.steam_id = l.steam_id ORDER BY x.last_seen DESC LIMIT 1) AS name,
-				l.total_kills AS "totalKills",
-				l.total_deaths AS "totalDeaths",
-				l.cash_earned AS "cashEarned",
-				l.seconds_tracked AS "secondsTracked"
+			SELECT l.metric, l.steam_id AS "steamId", l.kills, l.deaths, l.headshots AS "headshots",
+				l.team_kills AS "teamKills", l.suicides, l.matches, l.wins, l.losses, l.draws,
+				l.minutes, l.seed_minutes AS "seedMinutes", l.cash,
+				(SELECT x.name FROM player_sessions x WHERE x.steam_id = l.steam_id AND x.server_id IN (${sqlList(ids)}) ORDER BY x.last_seen DESC LIMIT 1) AS name
 			FROM leaders l
 		`);
-
 		const leaders: Record<string, unknown> = {};
-		for (const row of leaderRows) {
-			const kills = finite(row.totalKills);
-			const deaths = finite(row.totalDeaths);
-			leaders[row.metric] = {
-				id: row.steamId,
-				name: row.name || row.steamId,
-				group,
-				totalKills: kills,
-				totalDeaths: deaths,
-				kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
-				cashEarned: finite(row.cashEarned),
-				secondsTracked: finite(row.secondsTracked)
-			};
+		for (const row of leadersRaw) {
+			const player = rowToPlayer(row, server);
+			leaders[row.metric] = { ...player, totalKills: player.totalKills, totalDeaths: player.totalDeaths };
 		}
-
-		return apiJson({ group, server: serverNumber ? Number(serverNumber) : null, leaders, source: 'warcon', generatedAt: new Date().toISOString() });
+		return apiJson({ group: 'all', server, range, leaders, source: 'warcon-leaderboard', generatedAt: new Date().toISOString() });
 	}
 
-	const rows = await env.db.execute<{
-		steamId: string;
-		name: string;
-		aliases: unknown;
-		firstSeen: Date;
-		lastSeen: Date;
-		totalKills: string | number;
-		totalDeaths: string | number;
-		totalCashEarned: string | number;
-		sessions: string | number;
-		secondsTracked: string | number;
-		matchesSeen: string | number;
-		online: boolean;
-		currentServer: string | null;
-		currentFaction: string | null;
-		currentCash: string | number | null;
-		factionCounts: unknown;
-		serverCounts: unknown;
-		serversPlayed: unknown;
-	}>(sql`
-		WITH classified AS (${classifiedSessions}),
-		scoped AS NOT MATERIALIZED (
-			SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`}
-		),
-		player_matches AS (
-			SELECT ps.steam_id, COUNT(DISTINCT m.id)::bigint AS matches_seen
-			FROM scoped ps
-			INNER JOIN matches m
-				ON m.server_id = ps.server_id
-				AND m.started_at <= COALESCE(ps.left_at, now())
-				AND COALESCE(m.ended_at, now()) >= ps.joined_at
-				AND ${matchGroupFilter}
-			GROUP BY ps.steam_id
-		),
-		a AS (
-			SELECT
-				s.steam_id,
-				MIN(s.joined_at) AS first_seen,
-				MAX(s.last_seen) AS last_seen,
-				SUM(s.kills)::bigint AS total_kills,
-				SUM(s.deaths)::bigint AS total_deaths,
-				${cashEarnedSql} AS total_cash_earned,
-				COUNT(*)::bigint AS sessions,
-				SUM(EXTRACT(EPOCH FROM (COALESCE(s.left_at, now()) - s.joined_at)))::bigint AS seconds_tracked,
-				BOOL_OR(s.left_at IS NULL) AS online
-			FROM scoped s
-			WHERE ${searchFilter}
-			GROUP BY s.steam_id
+	const rows = await env.db.execute<StatsRow>(sql`
+		WITH ${base}, page AS (
+			SELECT * FROM a WHERE ${searchWhere} ORDER BY ${sorts[sort]}, a.steam_id LIMIT ${limit} OFFSET ${offset}
 		)
-		SELECT
-			a.steam_id AS "steamId",
-			(SELECT x.name FROM scoped x WHERE x.steam_id = a.steam_id ORDER BY x.last_seen DESC LIMIT 1) AS name,
-			COALESCE((
-				SELECT json_agg(n.name ORDER BY n.last_seen DESC)
-				FROM (
-					SELECT x.name, MAX(x.last_seen) AS last_seen
-					FROM scoped x WHERE x.steam_id = a.steam_id
-					GROUP BY x.name ORDER BY last_seen DESC LIMIT 10
-				) n
-			), '[]'::json) AS aliases,
-			a.first_seen AS "firstSeen",
-			a.last_seen AS "lastSeen",
-			a.total_kills AS "totalKills",
-			a.total_deaths AS "totalDeaths",
-			a.total_cash_earned AS "totalCashEarned",
-			a.sessions,
-			a.seconds_tracked AS "secondsTracked",
-			COALESCE(pm.matches_seen, 0)::bigint AS "matchesSeen",
-			a.online,
-			(SELECT x.server_name FROM scoped x WHERE x.steam_id = a.steam_id AND x.left_at IS NULL ORDER BY x.last_seen DESC LIMIT 1) AS "currentServer",
-			(SELECT x.faction FROM scoped x WHERE x.steam_id = a.steam_id AND x.left_at IS NULL ORDER BY x.last_seen DESC LIMIT 1) AS "currentFaction",
-			(SELECT x.cash FROM scoped x WHERE x.steam_id = a.steam_id AND x.left_at IS NULL ORDER BY x.last_seen DESC LIMIT 1) AS "currentCash",
-			COALESCE((
-				SELECT json_object_agg(f.faction, f.n)
-				FROM (
-					SELECT COALESCE(NULLIF(x.faction, ''), 'Unknown') AS faction, COUNT(*)::bigint AS n
-					FROM scoped x WHERE x.steam_id = a.steam_id
-					GROUP BY COALESCE(NULLIF(x.faction, ''), 'Unknown')
-				) f
-			), '{}'::json) AS "factionCounts",
-			COALESCE((
-				SELECT json_object_agg(sc.server_name, sc.n)
-				FROM (
-					SELECT x.server_name, COUNT(*)::bigint AS n
-					FROM scoped x WHERE x.steam_id = a.steam_id
-					GROUP BY x.server_name
-				) sc
-			), '{}'::json) AS "serverCounts",
-			COALESCE((
-				SELECT json_agg(sp.server_name ORDER BY sp.server_name)
-				FROM (
-					SELECT DISTINCT x.server_name FROM scoped x WHERE x.steam_id = a.steam_id
-				) sp
-			), '[]'::json) AS "serversPlayed"
-		FROM a
-		LEFT JOIN player_matches pm ON pm.steam_id = a.steam_id
-		ORDER BY ${orderBy}
-		LIMIT ${limit} OFFSET ${offset}
+		SELECT a.steam_id AS "steamId", a.first_seen AS "firstSeen", a.last_seen AS "lastSeen",
+			a.kills, a.deaths, a.headshots, a.team_kills AS "teamKills", a.suicides,
+			a.matches, a.wins, a.losses, a.draws, a.minutes, a.seed_minutes AS "seedMinutes", a.cash,
+			a.sessions, a.online,
+			(SELECT x.name FROM player_sessions x WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) ORDER BY x.last_seen DESC LIMIT 1) AS name,
+			COALESCE((SELECT json_agg(n.name ORDER BY n.last_seen DESC) FROM (
+				SELECT x.name, MAX(x.last_seen) AS last_seen FROM player_sessions x
+				WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)})
+				GROUP BY x.name ORDER BY last_seen DESC LIMIT 10
+			) n), '[]'::json) AS aliases,
+			(SELECT srv.name FROM player_sessions x JOIN servers srv ON srv.id = x.server_id
+				WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) AND x.left_at IS NULL ORDER BY x.last_seen DESC LIMIT 1) AS "currentServer",
+			(SELECT x.faction FROM player_sessions x WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) AND x.left_at IS NULL ORDER BY x.last_seen DESC LIMIT 1) AS "currentFaction",
+			(SELECT x.cash FROM player_sessions x WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) AND x.left_at IS NULL ORDER BY x.last_seen DESC LIMIT 1) AS "currentCash",
+			COALESCE((SELECT json_object_agg(f.faction, f.n) FROM (
+				SELECT COALESCE(NULLIF(x.faction, ''), 'Unknown') AS faction, COUNT(*) AS n FROM player_sessions x
+				WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) GROUP BY 1
+			) f), '{}'::json) AS "factionCounts",
+			COALESCE((SELECT json_object_agg(sc.name, sc.n) FROM (
+				SELECT srv.name, COUNT(*) AS n FROM player_sessions x JOIN servers srv ON srv.id = x.server_id
+				WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)}) GROUP BY srv.name
+			) sc), '{}'::json) AS "serverCounts",
+			COALESCE((SELECT json_agg(sp.name ORDER BY sp.name) FROM (
+				SELECT DISTINCT srv.name FROM player_sessions x JOIN servers srv ON srv.id = x.server_id
+				WHERE x.steam_id = a.steam_id AND x.server_id IN (${sqlList(ids)})
+			) sp), '[]'::json) AS "serversPlayed"
+		FROM page a
 	`);
-
-	const [countRow] = await env.db.execute<{ total: string | number }>(sql`
-		WITH classified AS (${classifiedSessions}),
-		scoped AS NOT MATERIALIZED (SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`})
-		SELECT COUNT(DISTINCT s.steam_id)::bigint AS total
-		FROM scoped s
-		WHERE ${searchFilter}
+	const [countRow] = await env.db.execute<{ total: string }>(sql`
+		WITH ${base} SELECT COUNT(*) AS total FROM a WHERE ${searchWhere}
 	`);
-
-	const [summaryRow] = await env.db.execute<{
-		trackedPlayers: string | number;
-		onlinePlayers: string | number;
-		totalKills: string | number;
-		totalDeaths: string | number;
-		secondsTracked: string | number;
-		updatedAt: Date | null;
+	const [summary] = await env.db.execute<{
+		trackedPlayers: string; onlinePlayers: string; totalKills: string; totalDeaths: string;
+		secondsTracked: string; updatedAt: Date | null;
 	}>(sql`
-		WITH classified AS (${classifiedSessions}),
-		scoped AS NOT MATERIALIZED (SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`})
-		SELECT
-			COUNT(DISTINCT steam_id)::bigint AS "trackedPlayers",
-			COUNT(DISTINCT steam_id) FILTER (WHERE left_at IS NULL)::bigint AS "onlinePlayers",
-			COALESCE(SUM(kills), 0)::bigint AS "totalKills",
-			COALESCE(SUM(deaths), 0)::bigint AS "totalDeaths",
-			COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - joined_at))), 0)::bigint AS "secondsTracked",
-			MAX(last_seen) AS "updatedAt"
-		FROM scoped
+		WITH players AS (
+			SELECT steam_id FROM player_sessions WHERE server_id IN (${sqlList(ids)}) AND last_seen >= ${from}
+			UNION SELECT killer_steam_id FROM kills WHERE server_id IN (${sqlList(ids)}) AND ts >= ${from} AND killer_steam_id IS NOT NULL
+			UNION SELECT victim_steam_id FROM kills WHERE server_id IN (${sqlList(ids)}) AND ts >= ${from} AND victim_steam_id IS NOT NULL
+		), sessions AS (
+			SELECT COUNT(DISTINCT steam_id) FILTER (WHERE left_at IS NULL) AS online_players,
+				COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - GREATEST(joined_at, ${from}::timestamptz)))), 0) AS seconds_tracked,
+				MAX(last_seen) AS updated_at
+			FROM player_sessions WHERE server_id IN (${sqlList(ids)}) AND last_seen >= ${from}
+		), feed AS (
+			SELECT COUNT(*) FILTER (WHERE NOT suicide AND killer_steam_id IS NOT NULL) AS kills,
+				COUNT(*) FILTER (WHERE victim_steam_id IS NOT NULL) AS deaths
+			FROM kills WHERE server_id IN (${sqlList(ids)}) AND ts >= ${from}
+		)
+		SELECT (SELECT COUNT(*) FROM players) AS "trackedPlayers", sessions.online_players AS "onlinePlayers",
+			feed.kills AS "totalKills", feed.deaths AS "totalDeaths",
+			sessions.seconds_tracked AS "secondsTracked", sessions.updated_at AS "updatedAt"
+		FROM sessions CROSS JOIN feed
 	`);
-
-	const players = rows.map((row) => {
-		const kills = finite(row.totalKills);
-		const deaths = finite(row.totalDeaths);
-		const sessions = finite(row.sessions);
-		const rawServerCounts = objectNumbers(row.serverCounts);
-		const serverCounts: Record<string, number> = {};
-		for (const [name, count] of Object.entries(rawServerCounts)) {
-			const match = /#(\d+)/.exec(name);
-			serverCounts[match ? `server-${match[1]}` : name] = count;
-		}
-		const currentServerName = row.currentServer || null;
-		const currentServerMatch = currentServerName ? /#(\d+)/.exec(currentServerName) : null;
-		return {
-			id: row.steamId,
-			name: row.name || row.steamId,
-			aliases: stringArray(row.aliases).filter((name) => name !== row.name),
-			group,
-			firstSeen: row.firstSeen?.toISOString?.() ?? new Date(row.firstSeen).toISOString(),
-			lastSeen: row.lastSeen?.toISOString?.() ?? new Date(row.lastSeen).toISOString(),
-			online: Boolean(row.online),
-			currentServer: currentServerMatch ? Number(currentServerMatch[1]) : null,
-			currentServerName,
-			currentFaction: row.currentFaction || null,
-			currentCash: row.currentCash === null ? null : finite(row.currentCash),
-			cashEarned: cashColumn?.available ? finite(row.totalCashEarned) : null,
-			totalKills: kills,
-			totalDeaths: deaths,
-			kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
-			sessionsSeen: sessions,
-			matchesSeen: finite(row.matchesSeen),
-			secondsTracked: finite(row.secondsTracked),
-			factionCounts: objectNumbers(row.factionCounts),
-			serverCounts,
-			serversPlayed: stringArray(row.serversPlayed),
-			peakKillsInMatch: null
-		};
-	});
-
-	const summary = summaryRow ?? {
-		trackedPlayers: 0,
-		onlinePlayers: 0,
-		totalKills: 0,
-		totalDeaths: 0,
-		secondsTracked: 0,
-		updatedAt: null
-	};
-
 	return apiJson({
-		group,
-		server: serverNumber ? Number(serverNumber) : null,
-		total: finite(countRow?.total),
-		players,
+		group: 'all', server, range, total: finite(countRow?.total),
+		players: rows.map((row) => rowToPlayer(row, server)),
 		summary: {
-			group,
-			cashEarnedAvailable: Boolean(cashColumn?.available),
-			trackedPlayers: finite(summary.trackedPlayers),
-			onlinePlayers: finite(summary.onlinePlayers),
-			totalKillsRecorded: finite(summary.totalKills),
-			totalDeathsRecorded: finite(summary.totalDeaths),
-			secondsTracked: finite(summary.secondsTracked),
-			updatedAt: summary.updatedAt ? new Date(summary.updatedAt).toISOString() : null
+			group: 'all', cashAvailable: true,
+			trackedPlayers: finite(summary?.trackedPlayers), onlinePlayers: finite(summary?.onlinePlayers),
+			totalKillsRecorded: finite(summary?.totalKills), totalDeathsRecorded: finite(summary?.totalDeaths),
+			secondsTracked: finite(summary?.secondsTracked),
+			updatedAt: summary?.updatedAt ? new Date(summary.updatedAt).toISOString() : null
 		},
-		source: 'warcon',
-		generatedAt: new Date().toISOString()
+		source: 'warcon-leaderboard', generatedAt: new Date().toISOString()
 	});
 });

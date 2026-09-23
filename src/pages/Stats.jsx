@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { images } from '../data/site.js'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
-const CASH_TRACKING_SINCE = '15 September 2026'
-
 const LEADER_METRICS = [
   { key: 'kills', index: '01', label: 'Most kills', value: (player) => formatNumber(player.totalKills) },
   { key: 'deaths', index: '02', label: 'Most deaths', value: (player) => formatNumber(player.totalDeaths) },
   { key: 'kd', index: '03', label: 'Best K/D', value: (player) => Number(player.kd || 0).toFixed(2) },
-  { key: 'cash', index: '04', label: 'Cash earned', value: (player) => formatNumber(player.cashEarned) },
-  { key: 'time', index: '05', label: 'Time played', value: (player) => formatDuration(player.secondsTracked) },
+  { key: 'perHour', index: '04', label: 'Kills / hour', value: (player) => Number(player.killsPerHour || 0).toFixed(2) },
+  { key: 'time', index: '05', label: 'Playtime', value: (player) => formatDuration(player.secondsTracked) },
+  { key: 'seeded', index: '06', label: 'Seed time', value: (player) => `${formatNumber(player.seedMinutes)}m` },
+  { key: 'matches', index: '07', label: 'Matches', value: (player) => formatNumber(player.matchesSeen) },
+  { key: 'wins', index: '08', label: 'Wins', value: (player) => formatNumber(player.wins) },
+  { key: 'winRate', index: '09', label: 'Win rate', value: (player) => player.winRate === null ? '—' : `${(Number(player.winRate) * 100).toFixed(1)}%` },
+  { key: 'cash', index: '10', label: 'Cash', value: (player) => formatNumber(player.cash) },
 ]
 
 function formatDuration(seconds) {
@@ -57,7 +60,7 @@ function mergePlayerRecords(existing, incoming) {
       totalKills: kills,
       totalDeaths: deaths,
       kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
-      cashEarned: Number(incoming.cashEarned ?? incoming.peakCash ?? 0),
+      cash: Number(incoming.cash ?? incoming.peakCash ?? 0),
       matchesSeen: Number(incoming.matchesSeen || 0),
       sessionsSeen: Number(incoming.sessionsSeen || 0),
       secondsTracked: Number(incoming.secondsTracked || 0),
@@ -101,9 +104,9 @@ function mergePlayerRecords(existing, incoming) {
     totalKills,
     totalDeaths,
     kd: totalDeaths > 0 ? Number((totalKills / totalDeaths).toFixed(2)) : totalKills,
-    cashEarned: Math.max(
-      Number(existing.cashEarned ?? existing.peakCash ?? 0),
-      Number(incoming.cashEarned ?? incoming.peakCash ?? 0),
+    cash: Math.max(
+      Number(existing.cash ?? existing.peakCash ?? 0),
+      Number(incoming.cash ?? incoming.peakCash ?? 0),
     ),
     matchesSeen: Number(existing.matchesSeen || 0) + Number(incoming.matchesSeen || 0),
     sessionsSeen: Number(existing.sessionsSeen || 0) + Number(incoming.sessionsSeen || 0),
@@ -156,7 +159,7 @@ function sortPlayers(players, sort) {
       kills: 'totalKills',
       deaths: 'totalDeaths',
       kd: 'kd',
-      cash: 'cashEarned',
+      cash: 'cash',
       time: 'secondsTracked',
       matches: 'matchesSeen',
     }[sort] || 'totalKills'
@@ -167,8 +170,8 @@ function sortPlayers(players, sort) {
   return sorted
 }
 
-async function fetchStatsPayload({ search = '', sort = 'kills', leaders = false, signal } = {}) {
-  const params = new URLSearchParams({ group: 'all', sort, limit: '500' })
+async function fetchStatsPayload({ search = '', sort = 'kills', range = 'all', leaders = false, signal } = {}) {
+  const params = new URLSearchParams({ group: 'all', range, sort, limit: '500' })
   if (search.trim()) params.set('search', search.trim())
   if (leaders) params.set('leaders', '1')
 
@@ -237,7 +240,7 @@ function metricLeader(players, metric) {
   const candidates = metric === 'kd'
     ? players.filter((player) => Number(player.totalKills || 0) >= 25)
     : metric === 'cash'
-      ? players.filter((player) => Number(player.cashEarned || 0) > 0)
+      ? players.filter((player) => Number(player.cash || 0) > 0)
       : players
 
   const sort = {
@@ -258,6 +261,7 @@ export default function Stats() {
   const [leaders, setLeaders] = useState(null)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('kills')
+  const [range, setRange] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
   const [selectedLookup, setSelectedLookup] = useState(null)
   const profileRef = useRef(null)
@@ -276,13 +280,13 @@ export default function Stats() {
     const loadComparisonPool = async () => {
       setComparisonPoolLoaded(false)
       try {
-        const payload = await fetchStatsPayload({ signal: controller.signal })
+        const payload = await fetchStatsPayload({ range, signal: controller.signal })
         if (!cancelled) {
           setComparisonPool(payload.players || [])
           setSummary(payload.summary || null)
         }
         try {
-          const leaderPayload = await fetchStatsPayload({ leaders: true, signal: controller.signal })
+          const leaderPayload = await fetchStatsPayload({ range, leaders: true, signal: controller.signal })
           if (!cancelled) setLeaders(leaderPayload.leaders || {})
         } catch (leaderError) {
           if (!cancelled && leaderError.name !== 'AbortError') setLeaders({})
@@ -299,7 +303,7 @@ export default function Stats() {
       cancelled = true
       controller.abort()
     }
-  }, [])
+  }, [range])
 
   useEffect(() => {
     let cancelled = false
@@ -310,7 +314,7 @@ export default function Stats() {
       setError('')
 
       try {
-        const payload = await fetchStatsPayload({ search, sort, signal: controller.signal })
+        const payload = await fetchStatsPayload({ search, sort, range, signal: controller.signal })
         if (!cancelled) setPlayers(payload.players || [])
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') {
@@ -327,7 +331,7 @@ export default function Stats() {
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [search, sort])
+  }, [search, sort, range])
 
   const displayedPlayers = players
 
@@ -354,7 +358,7 @@ export default function Stats() {
 
     const loadSelectedPlayer = async () => {
       try {
-        const payload = await fetchStatsPayload({ search: selectedId, signal: controller.signal })
+        const payload = await fetchStatsPayload({ search: selectedId, range, signal: controller.signal })
         if (!cancelled) setSelectedLookup((payload.players || []).find((player) => player.id === selectedId) || null)
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') setSelectedLookup(null)
@@ -366,7 +370,7 @@ export default function Stats() {
       cancelled = true
       controller.abort()
     }
-  }, [selectedId, selectedPlayerFromLists])
+  }, [selectedId, selectedPlayerFromLists, range])
 
   const selectedPlayer = selectedPlayerFromLists
     || (selectedLookup?.id === selectedId ? selectedLookup : null)
@@ -396,7 +400,7 @@ export default function Stats() {
     kd: average(comparisonPool, (player) => player.kd),
     matchesSeen: average(comparisonPool, (player) => player.matchesSeen),
     secondsTracked: average(comparisonPool, (player) => player.secondsTracked),
-    cashEarned: average(comparisonPool, (player) => player.cashEarned),
+    cash: average(comparisonPool, (player) => player.cash),
   }), [comparisonPool])
 
   const compareOptions = useMemo(
@@ -431,12 +435,19 @@ export default function Stats() {
               <p className="kicker">Network leaders // All tracked servers</p>
               <h2 id="stats-leaders-title">Top Players</h2>
             </div>
-            <p>Five categories. Five separate records.</p>
+            <label className="stats-range">
+              <span>Period</span>
+              <select value={range} onChange={(event) => setRange(event.target.value)}>
+                <option value="all">All time</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+              </select>
+            </label>
           </div>
           <div className="stats-leader-grid">
             {LEADER_METRICS.map((metric) => {
               const leader = leaders?.[metric.key]
-              const waitingForRoundData = leaders && metric.key === 'cash' && !leader
               return (
                 <button
                   key={metric.key}
@@ -447,10 +458,9 @@ export default function Stats() {
                 >
                   <span className="stats-leader-index">{metric.index}</span>
                   <span className="stats-leader-label">{metric.label}</span>
-                  <strong>{leader?.name || (waitingForRoundData ? 'Awaiting round data' : leaders ? 'Unavailable' : 'Calculating…')}</strong>
+                  <strong>{leader?.name || (leaders ? 'Unavailable' : 'Calculating…')}</strong>
                   <em>{leader ? metric.value(leader) : '—'}</em>
-                  {metric.key === 'kd' && <small>Minimum 25 kills</small>}
-                  {metric.key === 'cash' && <small>Best single round since {CASH_TRACKING_SINCE}</small>}
+                  <small>Minimum 60 minutes played</small>
                 </button>
               )
             })}
@@ -467,10 +477,14 @@ export default function Stats() {
             <select value={sort} onChange={(event) => setSort(event.target.value)}>
               <option value="kills">Kills</option>
               <option value="kd">K/D</option>
+              <option value="perHour">Kills per hour</option>
               <option value="deaths">Deaths</option>
-              <option value="cash" disabled={summary?.cashEarnedAvailable === false}>Cash earned{summary?.cashEarnedAvailable === false ? ' (unavailable)' : ''}</option>
-              <option value="time">Time tracked</option>
-              <option value="matches">Matches seen</option>
+              <option value="cash">Cash</option>
+              <option value="time">Playtime</option>
+              <option value="seeded">Seed time</option>
+              <option value="matches">Matches</option>
+              <option value="wins">Wins</option>
+              <option value="winRate">Win rate</option>
               <option value="lastSeen">Last seen</option>
               <option value="name">Name A–Z</option>
             </select>
@@ -494,7 +508,7 @@ export default function Stats() {
                   <th>Kills</th>
                   <th>Deaths</th>
                   <th>K/D</th>
-                  <th>Cash earned</th>
+                  <th>Cash</th>
                   <th>Matches</th>
                   <th>Tracked</th>
                   <th>Last Seen</th>
@@ -517,7 +531,7 @@ export default function Stats() {
                     <td>{player.totalKills}</td>
                     <td>{player.totalDeaths}</td>
                     <td>{player.kd}</td>
-                    <td>{formatNumber(player.cashEarned)}</td>
+                    <td>{formatNumber(player.cash)}</td>
                     <td>{player.matchesSeen}</td>
                     <td>{formatDuration(player.secondsTracked)}</td>
                     <td>{formatLastSeen(player.lastSeen)}</td>
@@ -550,10 +564,16 @@ export default function Stats() {
               <div><span>Kills</span><strong>{selectedPlayer.totalKills}</strong></div>
               <div><span>Deaths</span><strong>{selectedPlayer.totalDeaths}</strong></div>
               <div><span>K/D</span><strong>{selectedPlayer.kd}</strong></div>
-              <div><span>Cash earned</span><strong>{formatNumber(selectedPlayer.cashEarned)}</strong></div>
-              <div><span>Matches seen</span><strong>{selectedPlayer.matchesSeen}</strong></div>
-              <div><span>Tracked time</span><strong>{formatDuration(selectedPlayer.secondsTracked)}</strong></div>
-              <div><span>Peak kills / match</span><strong>{selectedPlayer.peakKillsInMatch ?? '—'}</strong></div>
+              <div><span>Kills per hour</span><strong>{selectedPlayer.killsPerHour == null ? '—' : Number(selectedPlayer.killsPerHour).toFixed(2)}</strong></div>
+              <div><span>Headshots</span><strong>{formatNumber(selectedPlayer.headshots)}</strong></div>
+              <div><span>Team kills</span><strong>{formatNumber(selectedPlayer.teamKills)}</strong></div>
+              <div><span>Suicides</span><strong>{formatNumber(selectedPlayer.suicides)}</strong></div>
+              <div><span>Cash</span><strong>{formatNumber(selectedPlayer.cash)}</strong></div>
+              <div><span>Matches</span><strong>{selectedPlayer.matchesSeen}</strong></div>
+              <div><span>Wins / Losses / Draws</span><strong>{selectedPlayer.wins} / {selectedPlayer.losses} / {selectedPlayer.draws}</strong></div>
+              <div><span>Win rate</span><strong>{selectedPlayer.winRate == null ? '—' : `${(Number(selectedPlayer.winRate) * 100).toFixed(1)}%`}</strong></div>
+              <div><span>Playtime</span><strong>{formatDuration(selectedPlayer.secondsTracked)}</strong></div>
+              <div><span>Seed time</span><strong>{formatNumber(selectedPlayer.seedMinutes)}m</strong></div>
               <div><span>Primary faction</span><strong>{primaryFaction(selectedPlayer)}</strong></div>
               <div><span>Servers played</span><strong>{serversPlayed(selectedPlayer)}</strong></div>
             </div>
@@ -627,9 +647,9 @@ export default function Stats() {
                       <td>{comparisonPlayer ? comparisonPlayer.matchesSeen : Math.round(averages.matchesSeen)}</td>
                     </tr>
                     <tr>
-                      <td>Cash earned</td>
-                      <td>{formatNumber(selectedPlayer.cashEarned)}</td>
-                      <td>{comparisonPlayer ? formatNumber(comparisonPlayer.cashEarned) : summary?.cashEarnedAvailable === false ? '—' : formatNumber(averages.cashEarned)}</td>
+                      <td>Cash</td>
+                      <td>{formatNumber(selectedPlayer.cash)}</td>
+                      <td>{comparisonPlayer ? formatNumber(comparisonPlayer.cash) : summary?.cashAvailable === false ? '—' : formatNumber(averages.cash)}</td>
                     </tr>
                     <tr>
                       <td>Tracked time</td>
@@ -644,7 +664,7 @@ export default function Stats() {
         )}
 
         <p className="stats-footnote">
-          Lifetime totals include every tracked 44th WARDOGS server and historical Hardcore sessions. The player list and comparisons show up to 500 players at a time; summary totals and top-player records cover the full network.
+          WARCON leaderboard data combines all five 44th servers, including historical sessions. Kills and deaths come from the kill feed; match results come from WARCON's match history. Cash is the sum of recorded session cash. Leader cards require at least 60 minutes played in the selected period. The player list and comparisons show up to 500 players at a time.
         </p>
       </section>
     </>

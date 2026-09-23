@@ -16,13 +16,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 require_once __DIR__ . '/stats-db.php';
 
 $allowedSorts = ['kills', 'deaths', 'kd', 'cash', 'time', 'matches', 'lastSeen', 'name'];
-$allowedGroups = ['normal', 'hardcore'];
+$allowedGroups = ['all', 'normal', 'hardcore'];
 
 $search = isset($_GET['search']) ? substr(trim((string)$_GET['search']), 0, 80) : '';
 $sort = isset($_GET['sort']) ? (string)$_GET['sort'] : 'kills';
 if (!in_array($sort, $allowedSorts, true)) $sort = 'kills';
-$group = isset($_GET['group']) ? strtolower((string)$_GET['group']) : 'normal';
-if (!in_array($group, $allowedGroups, true)) $group = 'normal';
+$group = isset($_GET['group']) ? strtolower((string)$_GET['group']) : 'all';
+if (!in_array($group, $allowedGroups, true)) $group = 'all';
+$server = isset($_GET['server']) ? trim((string)$_GET['server']) : '';
+if ($server !== '' && !preg_match('/^[1-5]$/', $server)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Server must be a number from 1 to 5']);
+    exit;
+}
 $limit = min(500, max(1, (int)($_GET['limit'] ?? 100)));
 $offset = min(100000, max(0, (int)($_GET['offset'] ?? 0)));
 
@@ -104,15 +110,25 @@ try {
         'offset' => $offset,
     ];
     if ($search !== '') $query['search'] = $search;
+    if ($server !== '') $query['server'] = $server;
     if (($_GET['leaders'] ?? '') === '1') $query['leaders'] = '1';
 
     $warconPayload = wardogsWarconStatsFetch($config, $query);
     if ($warconPayload !== null) {
+        if (($warconPayload['group'] ?? null) !== $group
+            || ($server !== '' && (string)($warconPayload['server'] ?? '') !== $server)) {
+            throw new RuntimeException('WARCON stats did not honor the requested scope');
+        }
         header('X-44th-Stats-Source: warcon');
         echo json_encode($warconPayload, JSON_UNESCAPED_SLASHES);
         exit;
     }
 
+    // The legacy collector cannot aggregate both rulesets or filter historical
+    // player sessions by server. Never return a partial total as global stats.
+    if ($group === 'all' || $server !== '') {
+        throw new RuntimeException('Global and per-server stats require WARCON');
+    }
     // Temporary fallback while WARCON public stats is being deployed.
     $pdo = wardogsStatsPdo($config);
     wardogsStatsMaybeCollect($pdo, $config);

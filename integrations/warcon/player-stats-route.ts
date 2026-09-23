@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { getEnv } from '$lib/server/env';
 import { ApiError, apiJson, int, route, str } from '$lib/server/http';
 
-const GROUPS = ['normal', 'hardcore'] as const;
+const GROUPS = ['all', 'normal', 'hardcore'] as const;
 type StatsGroup = (typeof GROUPS)[number];
 
 function bearerToken(request: Request): string {
@@ -20,13 +20,12 @@ function secretMatches(expected: string, actual: string): boolean {
 }
 
 function groupFrom(value: string | null): StatsGroup {
-	return value === 'hardcore' ? 'hardcore' : 'normal';
+	return value === 'hardcore' || value === 'normal' ? value : 'all';
 }
 
 /**
- * All 44th servers participate in both stats groups. The ruleset is resolved from WARCON's
- * match history, not from a fixed server number. The old NORMAL/HARDCORE variables remain as a
- * migration fallback so an existing deployment keeps working until WARDOGS_STATS_SERVERS is set.
+ * Resolve all five numbered servers from WARCON. The old NORMAL/HARDCORE variables remain
+ * a migration fallback, but the route refuses a partial global total if either list is stale.
  */
 function configuredServerRefs(): string[] {
 	const explicit = (privateEnv.WARDOGS_STATS_SERVERS || '').trim();
@@ -59,6 +58,10 @@ function stringArray(value: unknown): string[] {
 	return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
+function sqlList(values: string[]) {
+	return sql.join(values.map((value) => sql`${value}`), sql`, `);
+}
+
 export const GET = route(async (event) => {
 	const expected = (privateEnv.WARDOGS_STATS_API_KEY || '').trim();
 	if (expected.length < 20) throw new ApiError(503, 'Public stats API is not configured.');
@@ -66,11 +69,15 @@ export const GET = route(async (event) => {
 
 	const env = getEnv();
 	const group = groupFrom(event.url.searchParams.get('group'));
+	const serverNumber = event.url.searchParams.get('server');
+	if (serverNumber !== null && !/^[1-5]$/.test(serverNumber)) {
+		throw new ApiError(400, 'Server must be a number from 1 to 5.');
+	}
 	const refs = configuredServerRefs();
 	if (!refs.length) throw new ApiError(503, 'No WARDOGS servers are configured for public stats.');
 
 	const serverRows = await env.db.execute<{ id: string; name: string }>(sql`
-		SELECT id, name FROM servers WHERE id IN ${refs} OR name IN ${refs}
+		SELECT id, name FROM servers WHERE id IN (${sqlList(refs)}) OR name IN (${sqlList(refs)})
 	`);
 	const byId = new Map(serverRows.map((server) => [server.id, server]));
 	const byName = new Map(serverRows.map((server) => [server.name, server]));
@@ -78,12 +85,30 @@ export const GET = route(async (event) => {
 		id: string;
 		name: string;
 	}[];
-	const serverIds = [...new Set(resolved.map((server) => server.id))];
-	if (!serverIds.length || serverIds.length !== refs.length) {
+	const allServerIds = [...new Set(resolved.map((server) => server.id))];
+	if (!allServerIds.length || allServerIds.length !== refs.length) {
 		const found = new Set(resolved.flatMap((server) => [server.id, server.name]));
 		const missing = refs.filter((ref) => !found.has(ref));
 		throw new ApiError(503, `Unknown public stats server reference(s): ${missing.join(', ')}`);
 	}
+	const numberedServers = [1, 2, 3, 4, 5].map((number) => {
+		const matches = resolved.filter((server) => new RegExp(`#${number}(?!\\d)`).test(server.name));
+		if (matches.length !== 1) {
+			throw new ApiError(503, `WARDOGS Server #${number} is missing or ambiguous in WARCON stats configuration.`);
+		}
+		return matches[0];
+	});
+	const selectedServers = serverNumber ? [numberedServers[Number(serverNumber) - 1]] : numberedServers;
+	const serverIds = selectedServers.map((server) => server.id);
+	const [cashColumn] = await env.db.execute<{ available: boolean }>(sql`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'player_sessions' AND column_name = 'cash_earned'
+		) AS available
+	`);
+	const cashEarnedSql = cashColumn?.available
+		? sql`COALESCE(MAX(s.cash_earned), 0)::bigint`
+		: sql`0::bigint`;
 
 	const search = str(event.url.searchParams.get('search'), 80);
 	const pattern = `%${search}%`;
@@ -115,10 +140,16 @@ export const GET = route(async (event) => {
 								? sql`name ASC`
 								: sql`a.total_kills DESC, a.total_deaths ASC`;
 
-	// A session belongs to the ruleset of the WARCON match active when that session began.
+	// Global totals need no match lookup. Historical ruleset filters classify each session
+	// from the WARCON match active when that session began.
 	// apply-ruleset-session-splits.py makes a new session whenever the live ruleset flips, so a
 	// player who stays connected across Standard -> Hardcore does not move their earlier totals.
-	const classifiedSessions = sql`
+	const classifiedSessions = group === 'all' ? sql`
+		SELECT ps.*, srv.name AS server_name, 'all'::text AS stats_group
+		FROM player_sessions ps
+		INNER JOIN servers srv ON srv.id = ps.server_id
+		WHERE ps.server_id IN (${sqlList(serverIds)})
+	` : sql`
 		SELECT
 			ps.*,
 			srv.name AS server_name,
@@ -139,7 +170,7 @@ export const GET = route(async (event) => {
 			ORDER BY m.started_at DESC
 			LIMIT 1
 		) match_at_join ON true
-		WHERE ps.server_id IN ${serverIds}
+		WHERE ps.server_id IN (${sqlList(serverIds)})
 	`;
 
 	const matchGroupFilter =
@@ -148,7 +179,7 @@ export const GET = route(async (event) => {
 				LOWER(COALESCE(m.map, '')) LIKE '%hardcore%'
 				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
 			)`
-			: sql`NOT (
+			: group === 'all' ? sql`true` : sql`NOT (
 				LOWER(COALESCE(m.map, '')) LIKE '%hardcore%'
 				OR LOWER(COALESCE(m.experiences, '')) LIKE '%hardcore%'
 			)`;
@@ -164,15 +195,15 @@ export const GET = route(async (event) => {
 			secondsTracked: string | number;
 		}>(sql`
 			WITH classified AS (${classifiedSessions}),
-			scoped AS (SELECT * FROM classified WHERE stats_group = ${group}),
+			scoped AS NOT MATERIALIZED (SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`}),
 			totals AS (
 				SELECT
 					steam_id,
 					SUM(kills)::bigint AS total_kills,
 					SUM(deaths)::bigint AS total_deaths,
-					COALESCE(MAX(cash_earned), 0)::bigint AS cash_earned,
+					${cashEarnedSql} AS cash_earned,
 					SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, now()) - joined_at)))::bigint AS seconds_tracked
-				FROM scoped
+				FROM scoped s
 				GROUP BY steam_id
 			),
 			leaders AS (
@@ -213,7 +244,7 @@ export const GET = route(async (event) => {
 			};
 		}
 
-		return apiJson({ group, leaders, source: 'warcon', generatedAt: new Date().toISOString() });
+		return apiJson({ group, server: serverNumber ? Number(serverNumber) : null, leaders, source: 'warcon', generatedAt: new Date().toISOString() });
 	}
 
 	const rows = await env.db.execute<{
@@ -237,8 +268,8 @@ export const GET = route(async (event) => {
 		serversPlayed: unknown;
 	}>(sql`
 		WITH classified AS (${classifiedSessions}),
-		scoped AS (
-			SELECT * FROM classified WHERE stats_group = ${group}
+		scoped AS NOT MATERIALIZED (
+			SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`}
 		),
 		player_matches AS (
 			SELECT ps.steam_id, COUNT(DISTINCT m.id)::bigint AS matches_seen
@@ -257,7 +288,7 @@ export const GET = route(async (event) => {
 				MAX(s.last_seen) AS last_seen,
 				SUM(s.kills)::bigint AS total_kills,
 				SUM(s.deaths)::bigint AS total_deaths,
-				COALESCE(MAX(s.cash_earned), 0)::bigint AS total_cash_earned,
+				${cashEarnedSql} AS total_cash_earned,
 				COUNT(*)::bigint AS sessions,
 				SUM(EXTRACT(EPOCH FROM (COALESCE(s.left_at, now()) - s.joined_at)))::bigint AS seconds_tracked,
 				BOOL_OR(s.left_at IS NULL) AS online
@@ -318,7 +349,7 @@ export const GET = route(async (event) => {
 
 	const [countRow] = await env.db.execute<{ total: string | number }>(sql`
 		WITH classified AS (${classifiedSessions}),
-		scoped AS (SELECT * FROM classified WHERE stats_group = ${group})
+		scoped AS NOT MATERIALIZED (SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`})
 		SELECT COUNT(DISTINCT s.steam_id)::bigint AS total
 		FROM scoped s
 		WHERE ${searchFilter}
@@ -333,7 +364,7 @@ export const GET = route(async (event) => {
 		updatedAt: Date | null;
 	}>(sql`
 		WITH classified AS (${classifiedSessions}),
-		scoped AS (SELECT * FROM classified WHERE stats_group = ${group})
+		scoped AS NOT MATERIALIZED (SELECT * FROM classified WHERE ${group === 'all' ? sql`true` : sql`stats_group = ${group}`})
 		SELECT
 			COUNT(DISTINCT steam_id)::bigint AS "trackedPlayers",
 			COUNT(DISTINCT steam_id) FILTER (WHERE left_at IS NULL)::bigint AS "onlinePlayers",
@@ -368,7 +399,7 @@ export const GET = route(async (event) => {
 			currentServerName,
 			currentFaction: row.currentFaction || null,
 			currentCash: row.currentCash === null ? null : finite(row.currentCash),
-			cashEarned: finite(row.totalCashEarned),
+			cashEarned: cashColumn?.available ? finite(row.totalCashEarned) : null,
 			totalKills: kills,
 			totalDeaths: deaths,
 			kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
@@ -393,10 +424,12 @@ export const GET = route(async (event) => {
 
 	return apiJson({
 		group,
+		server: serverNumber ? Number(serverNumber) : null,
 		total: finite(countRow?.total),
 		players,
 		summary: {
 			group,
+			cashEarnedAvailable: Boolean(cashColumn?.available),
 			trackedPlayers: finite(summary.trackedPlayers),
 			onlinePlayers: finite(summary.onlinePlayers),
 			totalKillsRecorded: finite(summary.totalKills),

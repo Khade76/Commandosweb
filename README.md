@@ -58,7 +58,7 @@ four persistent codes shipped with the site.
 
 ### Add XRealm Server #4
 
-Server #4 is `44th Commandos #4 | Hardcore | discord.gg/44thwardogs`. Its website and Discord lookup key is `wardogs-12577`, based on XRealm ID `12577`, and its persistent join code is `7f15ef51-2673-4eab-b3c8-d8176a3b41e4`.
+Server #4 currently appears as `44th Commandos #4 | New Player Friendly | discord.gg/44thwardogs`. Its website and Discord lookup key is `wardogs-12577`, based on XRealm ID `12577`, and its persistent join code is `7f15ef51-2673-4eab-b3c8-d8176a3b41e4`.
 
 Append the Server #4 entry from `ovh/wardogs-secrets.example.php` to the existing private `servers` array. Keep the existing server records, WARCON key and other settings. Set its RCON password privately and use `http://84.32.103.104:20001` (or the HTTPS scheme if that is what the working WARCON connection uses). Port `20001` is for RCON, not a player join address.
 
@@ -132,7 +132,7 @@ WARCON receives:
 
 ```env
 WARDOGS_STATS_API_KEY=LONG_RANDOM_SECRET
-WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID
+WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID,SERVER_5_ID
 ```
 
 The integration adjusts WARCON session tracking so kills/deaths accumulate across WARDOGS match counter resets while a player remains connected. It also records positive cash deltas from 15 September 2026 onward for the website's Cash Earned leaderboard; historical cash is deliberately not estimated.
@@ -145,7 +145,7 @@ During the cutover, `public/api/player-stats.php` can continue using the already
 'stats_source' => 'mariadb',
 ```
 
-The existing `database/schema.sql`, `stats-db.php`, `collect-stats.php` and health tooling are retained only until WARCON is confirmed live. Once WARCON has been tested through the public website, they can be removed in a cleanup change.
+The existing `database/schema.sql`, `stats-db.php`, `collect-stats.php` and health tooling remain for the old Normal/Hardcore endpoints. Global and per-server totals require WARCON; the fallback returns an error rather than a partial total.
 
 ## Website development
 

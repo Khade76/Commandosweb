@@ -13,7 +13,7 @@ All five 44th servers belong in the same WARCON stats source list. The WARCON pu
 - if the match `map` or `experiences` contains `Hardcore` (for example `KOTH_Hardcore`), that session is internally classified as **Hardcore**;
 - otherwise it is internally classified as **Standard**.
 
-The public Commandos website no longer shows separate Normal/Hardcore sections. Its Stats page requests both internal groups and combines each SteamID into one public lifetime profile, leaderboard and comparison pool. Keeping the internal split in WARCON preserves the existing history and means no destructive stats migration is required.
+The public Commandos website and Discord bots request `group=all`, which aggregates every configured server and both historical rulesets in one WARCON query. `server=1` through `server=5` optionally narrows the query to one numbered server. The internal ruleset split remains available for historical diagnostics; no stats migration is required.
 
 Because WARCON player sessions can normally span several matches, `apply-ruleset-session-splits.py` closes/reopens the in-memory player session only when the live ruleset changes Standard <-> Hardcore. That keeps cumulative K/D on the correct internal ruleset even when a player stays connected through a rotation change. The split is internal stats bookkeeping and does not generate fake player-join triggers.
 
@@ -104,7 +104,7 @@ Use the WARCON IDs for all five current 44th servers:
 - 44th Commandos #1
 - 44th Commandos #2
 - 44th Commandos #3
-- 44th Commandos #4 | Hardcore | discord.gg/44thwardogs (XRealm)
+- 44th Commandos #4 (XRealm)
 - 44th Commandos #5 | discord.gg/44thwardogs (XRealm)
 
 The route also accepts exact WARCON server names, but IDs are preferred because names may change.
@@ -128,9 +128,9 @@ WARDOGS_STATS_API_KEY=PASTE_THE_RANDOM_TOKEN
 WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID,SERVER_5_ID
 ```
 
-`WARDOGS_STATS_SERVERS` replaces the old fixed `WARDOGS_STATS_NORMAL_SERVERS` / `WARDOGS_STATS_HARDCORE_SERVERS` split. The route still reads the old variables as a migration fallback, but they should be removed after `WARDOGS_STATS_SERVERS` is confirmed.
+`WARDOGS_STATS_SERVERS` replaces the old fixed `WARDOGS_STATS_NORMAL_SERVERS` / `WARDOGS_STATS_HARDCORE_SERVERS` split. The route still reads the old variables as a migration fallback, but returns 503 until all five numbered servers resolve. Remove the legacy variables after the new list is confirmed.
 
-For an existing installation, preserve the current API key and the four existing server references, then append Server #5's resolved WARCON ID (or exact WARCON server name). The live match ruleset still determines the internal Standard/Hardcore classification; the website combines those records for display and this update does not rewrite historical sessions.
+For an existing installation, preserve the current API key and set all five verified WARCON server IDs. On 23 September 2026, the running web service used the legacy allowlists for #1–#3 only, although WARCON already stored sessions for #4 and #5. Recheck the IDs before applying configuration; the read-only lookup above is authoritative. This update does not rewrite historical sessions.
 
 Do not prefix the private values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` for client-exposed configuration, while this API key must remain server-only.
 
@@ -139,7 +139,7 @@ Do not prefix the private values with `PUBLIC_`. SvelteKit reserves `PUBLIC_` fo
 The standard WARCON Docker Compose file builds from the local checkout, so rebuild after applying the patches and installing the route:
 
 ```bash
-docker compose up -d --build
+docker compose up -d --no-deps --build warcon
 ```
 
 Then check the containers:
@@ -157,29 +157,29 @@ TOKEN='PASTE_THE_RANDOM_TOKEN'
 
 curl -sS \
   -H "Authorization: Bearer $TOKEN" \
-  'http://127.0.0.1:3000/api/public/player-stats?group=normal&limit=5'
+  'http://127.0.0.1:3000/api/public/player-stats?group=all&limit=5'
 ```
 
 A working response contains:
 
 ```json
 {
-  "group": "normal",
+  "group": "all",
   "players": [],
   "summary": {},
   "source": "warcon"
 }
 ```
 
-Test the internal Hardcore pool as well because the website combines both responses:
+Test a numbered server and confirm its `serverCounts` and totals are scoped:
 
 ```bash
 curl -sS \
   -H "Authorization: Bearer $TOKEN" \
-  'http://127.0.0.1:3000/api/public/player-stats?group=hardcore&limit=5'
+  'http://127.0.0.1:3000/api/public/player-stats?group=all&server=4&limit=5'
 ```
 
-Hardcore may legitimately be empty while none of the configured servers has recorded a Hardcore-tagged match.
+If a numbered server is missing from `WARDOGS_STATS_SERVERS`, the route returns a configuration error instead of attributing another server's sessions to it.
 
 ## 9. Website configuration
 
@@ -203,7 +203,7 @@ Server #5's website/RCON status entry must also be added to the private `wardogs
 Open:
 
 ```text
-https://44thwardogs.com/api/player-stats.php?group=normal&limit=5
+https://44thwardogs.com/api/player-stats.php?group=all&limit=5
 ```
 
 The JSON should contain:
@@ -212,10 +212,10 @@ The JSON should contain:
 "source": "warcon"
 ```
 
-Then test the internal Hardcore endpoint as well:
+Then test each numbered server:
 
 ```text
-https://44thwardogs.com/api/player-stats.php?group=hardcore&limit=5
+https://44thwardogs.com/api/player-stats.php?group=all&server=4&limit=5
 ```
 
 Finally open `/stats`. There should be one combined 44th player-stats view with no separate Hardcore section. A player who has records in both internal groups should appear once with combined kills, deaths, matches and tracked time.

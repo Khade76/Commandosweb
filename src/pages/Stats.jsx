@@ -3,7 +3,6 @@ import { images } from '../data/site.js'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
 const CASH_TRACKING_SINCE = '15 September 2026'
-const STATS_GROUPS = ['normal', 'hardcore']
 
 const LEADER_METRICS = [
   { key: 'kills', index: '01', label: 'Most kills', value: (player) => formatNumber(player.totalKills) },
@@ -23,6 +22,7 @@ function formatDuration(seconds) {
 }
 
 function formatNumber(value) {
+  if (value === null || value === undefined) return '—'
   const number = Number(value)
   return Number.isFinite(number) ? new Intl.NumberFormat('en-GB').format(number) : '—'
 }
@@ -167,25 +167,19 @@ function sortPlayers(players, sort) {
   return sorted
 }
 
-async function fetchCombinedStats({ search = '', signal } = {}) {
-  const payloads = await Promise.all(STATS_GROUPS.map(async (group) => {
-    const params = new URLSearchParams({
-      group,
-      sort: 'kills',
-      limit: '500',
-    })
-    if (search.trim()) params.set('search', search.trim())
+async function fetchStatsPayload({ search = '', sort = 'kills', leaders = false, signal } = {}) {
+  const params = new URLSearchParams({ group: 'all', sort, limit: '500' })
+  if (search.trim()) params.set('search', search.trim())
+  if (leaders) params.set('leaders', '1')
 
-    const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
-      cache: 'no-store',
-      signal,
-    })
-    const payload = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
-    return payload || { players: [] }
-  }))
-
-  return mergePlayers(payloads)
+  const response = await fetch(`${STATS_API_URL}?${params.toString()}`, {
+    cache: 'no-store',
+    signal,
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.error || `Stats API returned ${response.status}`)
+  if (payload?.group !== 'all') throw new Error('Global stats are not available from the API yet')
+  return payload || { players: [] }
 }
 
 function primaryFaction(player) {
@@ -260,6 +254,8 @@ export default function Stats() {
   const [players, setPlayers] = useState([])
   const [comparisonPool, setComparisonPool] = useState([])
   const [comparisonPoolLoaded, setComparisonPoolLoaded] = useState(false)
+  const [summary, setSummary] = useState(null)
+  const [leaders, setLeaders] = useState(null)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('kills')
   const [selectedId, setSelectedId] = useState(null)
@@ -280,8 +276,17 @@ export default function Stats() {
     const loadComparisonPool = async () => {
       setComparisonPoolLoaded(false)
       try {
-        const combined = await fetchCombinedStats({ signal: controller.signal })
-        if (!cancelled) setComparisonPool(combined)
+        const payload = await fetchStatsPayload({ signal: controller.signal })
+        if (!cancelled) {
+          setComparisonPool(payload.players || [])
+          setSummary(payload.summary || null)
+        }
+        try {
+          const leaderPayload = await fetchStatsPayload({ leaders: true, signal: controller.signal })
+          if (!cancelled) setLeaders(leaderPayload.leaders || {})
+        } catch (leaderError) {
+          if (!cancelled && leaderError.name !== 'AbortError') setLeaders({})
+        }
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') setComparisonPool([])
       } finally {
@@ -305,8 +310,8 @@ export default function Stats() {
       setError('')
 
       try {
-        const combined = await fetchCombinedStats({ search, signal: controller.signal })
-        if (!cancelled) setPlayers(sortPlayers(combined, sort))
+        const payload = await fetchStatsPayload({ search, sort, signal: controller.signal })
+        if (!cancelled) setPlayers(payload.players || [])
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') {
           setError(fetchError.message || 'Unable to load player stats')
@@ -325,21 +330,6 @@ export default function Stats() {
   }, [search, sort])
 
   const displayedPlayers = players
-
-  const summary = useMemo(() => {
-    if (!comparisonPoolLoaded) return null
-    return {
-      trackedPlayers: comparisonPool.length,
-      onlinePlayers: comparisonPool.filter((player) => player.online).length,
-      totalKillsRecorded: comparisonPool.reduce((sum, player) => sum + Number(player.totalKills || 0), 0),
-      secondsTracked: comparisonPool.reduce((sum, player) => sum + Number(player.secondsTracked || 0), 0),
-    }
-  }, [comparisonPool, comparisonPoolLoaded])
-
-  const leaders = useMemo(() => {
-    if (!comparisonPoolLoaded) return null
-    return Object.fromEntries(LEADER_METRICS.map((metric) => [metric.key, metricLeader(comparisonPool, metric.key)]))
-  }, [comparisonPool, comparisonPoolLoaded])
 
   const totalHours = useMemo(() => {
     const seconds = Number(summary?.secondsTracked)
@@ -364,8 +354,8 @@ export default function Stats() {
 
     const loadSelectedPlayer = async () => {
       try {
-        const combined = await fetchCombinedStats({ search: selectedId, signal: controller.signal })
-        if (!cancelled) setSelectedLookup(combined.find((player) => player.id === selectedId) || null)
+        const payload = await fetchStatsPayload({ search: selectedId, signal: controller.signal })
+        if (!cancelled) setSelectedLookup((payload.players || []).find((player) => player.id === selectedId) || null)
       } catch (fetchError) {
         if (!cancelled && fetchError.name !== 'AbortError') setSelectedLookup(null)
       }
@@ -457,7 +447,7 @@ export default function Stats() {
                 >
                   <span className="stats-leader-index">{metric.index}</span>
                   <span className="stats-leader-label">{metric.label}</span>
-                  <strong>{leader?.name || (waitingForRoundData ? 'Awaiting round data' : 'Calculating…')}</strong>
+                  <strong>{leader?.name || (waitingForRoundData ? 'Awaiting round data' : leaders ? 'Unavailable' : 'Calculating…')}</strong>
                   <em>{leader ? metric.value(leader) : '—'}</em>
                   {metric.key === 'kd' && <small>Minimum 25 kills</small>}
                   {metric.key === 'cash' && <small>Best single round since {CASH_TRACKING_SINCE}</small>}
@@ -478,12 +468,11 @@ export default function Stats() {
               <option value="kills">Kills</option>
               <option value="kd">K/D</option>
               <option value="deaths">Deaths</option>
-              <option value="cash">Cash earned</option>
+              <option value="cash" disabled={summary?.cashEarnedAvailable === false}>Cash earned{summary?.cashEarnedAvailable === false ? ' (unavailable)' : ''}</option>
               <option value="time">Time tracked</option>
               <option value="matches">Matches seen</option>
               <option value="lastSeen">Last seen</option>
               <option value="name">Name A–Z</option>
-              <option value="nameDesc">Name Z–A</option>
             </select>
           </label>
         </div>}
@@ -601,8 +590,8 @@ export default function Stats() {
                 ].map(([label, rank]) => (
                   <div key={label}>
                     <span>{label} rank</span>
-                    <strong>{rank ? `#${rank.rank} of ${rank.total}` : '—'}</strong>
-                    <small>{rank ? `Top ${rank.topPercent}%` : 'Not ranked'}</small>
+                    <strong>{rank ? `#${rank.rank} of ${rank.total} shown` : '—'}</strong>
+                    <small>{rank ? `Top ${rank.topPercent}% of shown players` : 'Not ranked'}</small>
                   </div>
                 ))}
               </div>
@@ -613,7 +602,7 @@ export default function Stats() {
                     <tr>
                       <th>Metric</th>
                       <th>{selectedPlayer.name}</th>
-                      <th>{comparisonPlayer?.name || 'Community avg.'}</th>
+                      <th>{comparisonPlayer?.name || 'Shown players avg.'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -640,7 +629,7 @@ export default function Stats() {
                     <tr>
                       <td>Cash earned</td>
                       <td>{formatNumber(selectedPlayer.cashEarned)}</td>
-                      <td>{comparisonPlayer ? formatNumber(comparisonPlayer.cashEarned) : formatNumber(averages.cashEarned)}</td>
+                      <td>{comparisonPlayer ? formatNumber(comparisonPlayer.cashEarned) : summary?.cashEarnedAvailable === false ? '—' : formatNumber(averages.cashEarned)}</td>
                     </tr>
                     <tr>
                       <td>Tracked time</td>
@@ -655,7 +644,7 @@ export default function Stats() {
         )}
 
         <p className="stats-footnote">
-          Player statistics are combined across every tracked 44th WARDOGS server. Hardcore sessions remain preserved in WARCON but are folded into the same public player totals instead of appearing in a separate section.
+          Lifetime totals include every tracked 44th WARDOGS server and historical Hardcore sessions. The player list and comparisons show up to 500 players at a time; summary totals and top-player records cover the full network.
         </p>
       </section>
     </>

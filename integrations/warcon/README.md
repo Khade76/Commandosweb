@@ -4,7 +4,7 @@ WARCON is the persistent source of truth for `/stats` on `44thwardogs.com`.
 
 The current route reads the same kill feed, match outcomes and session fields as WARCON's leaderboard. It aggregates Servers #1–#5 by default, or one server with `server=1` through `server=5`. `range=7d|30d|90d|all` and `sort=kills|deaths|kd|perHour|time|seeded|matches|wins|winRate|cash` match WARCON's leaderboard choices. The website and Discord bot use all-time unless a website visitor selects another period. Leader cards apply WARCON's 60-minute minimum playtime.
 
-The older Standard/Hardcore split and `cash_earned` patch instructions below are historical and are not required by the current route. Cash now means WARCON's sum of session cash; kills and deaths come from kill-feed events. Historical Hardcore events remain in all-time totals.
+The older Standard/Hardcore split and `cash_earned` patch instructions below are historical and are not required by the current route. Cash now means WARCON's sum of session cash. Kills and deaths combine feed events with the recorded session totals from sessions completed before the kill feed was enabled on each server on 19 September 2026. Sessions crossing that boundary are excluded from the historical addition because their counters cannot be split without double counting. Historical Hardcore events remain in all-time totals.
 
 The website does not need a separate MariaDB collector when `stats_source` is set to `warcon`. WARCON stores player sessions and match history in its own Postgres/TimescaleDB database, and the website reads the API-key-protected public stats route.
 

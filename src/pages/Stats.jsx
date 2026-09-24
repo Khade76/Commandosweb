@@ -668,7 +668,7 @@ export default function Stats() {
         )}
 
         <p className="stats-footnote">
-          WARCON leaderboard data combines all five 44th servers, including historical sessions. Kills and deaths come from the kill feed; match results come from WARCON's match history. Cash is the sum of recorded session cash. Leader cards require at least 60 minutes played in the selected period. The player list and comparisons show up to 500 players at a time.
+          WARCON data combines all five 44th servers. Kills and deaths include recorded session totals from before kill-feed tracking began, plus later kill-feed events. Sessions that crossed the tracking change may have incomplete K/D totals. Match results come from WARCON's match history, and cash is the sum of recorded session cash. Leader cards require at least 60 minutes played in the selected period. The player list and comparisons show up to 500 players at a time.
         </p>
       </section>
     </>

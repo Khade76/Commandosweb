@@ -13,6 +13,10 @@ function sqlList(values: string[]) {
 	return sql.join(values.map((value) => sql`${value}`), sql`, `);
 }
 
+function feedStartValues(ids: string[], feedStarts: Date[]) {
+	return sql.join(ids.map((id, index) => sql`(${id}, ${feedStarts[index]}::timestamptz)`), sql`, `);
+}
+
 function stringArray(value: unknown): string[] {
 	return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
@@ -50,9 +54,10 @@ type StatsRow = Record<string, unknown> & {
 
 // Keep the aggregates and match outcome rule aligned with WARCON's
 // $lib/server/leaderboards.ts. The route is installed independently of WARCON releases.
-function boardBase(ids: string[], from: Date) {
+function boardBase(ids: string[], from: Date, feedStarts: Date[]) {
 	const selected = sqlList(ids);
 	return sql`
+		feed_start(server_id, starts_at) AS (VALUES ${feedStartValues(ids, feedStarts)}),
 		s AS (
 			SELECT id, server_id, steam_id, faction, joined_at, COALESCE(left_at, now()) AS left_at, last_seen
 			FROM player_sessions WHERE server_id IN (${selected}) AND last_seen >= ${from}
@@ -65,6 +70,12 @@ function boardBase(ids: string[], from: Date) {
 				COUNT(*) AS sessions, BOOL_OR(left_at IS NULL) AS online
 			FROM player_sessions WHERE server_id IN (${selected}) AND last_seen >= ${from}
 			GROUP BY steam_id
+		),
+		pre_feed AS (
+			SELECT ps.steam_id, SUM(ps.kills) AS kills, SUM(ps.deaths) AS deaths
+			FROM player_sessions ps JOIN feed_start fs ON fs.server_id = ps.server_id
+			WHERE ps.joined_at >= ${from} AND ps.left_at <= fs.starts_at
+			GROUP BY ps.steam_id
 		),
 		kl AS (
 			SELECT killer_steam_id AS steam_id,
@@ -116,12 +127,15 @@ function boardBase(ids: string[], from: Date) {
 				COALESCE(sess.cash, 0) AS cash, sess.first_seen,
 				COALESCE(sess.last_seen, kl.first_kill, dt.first_death) AS last_seen,
 				COALESCE(sess.sessions, 0) AS sessions, COALESCE(sess.online, false) AS online,
-				COALESCE(kl.kills, 0) AS kills, COALESCE(kl.headshots, 0) AS headshots,
+				COALESCE(kl.kills, 0) + COALESCE(pre_feed.kills, 0) AS kills,
+				COALESCE(kl.headshots, 0) AS headshots,
 				COALESCE(kl.team_kills, 0) AS team_kills,
-				COALESCE(dt.deaths, 0) AS deaths, COALESCE(dt.suicides, 0) AS suicides,
+				COALESCE(dt.deaths, 0) + COALESCE(pre_feed.deaths, 0) AS deaths,
+				COALESCE(dt.suicides, 0) AS suicides,
 				COALESCE(mt.matches, 0) AS matches, COALESCE(mt.wins, 0) AS wins,
 				COALESCE(mt.losses, 0) AS losses, COALESCE(mt.draws, 0) AS draws
-			FROM sess FULL JOIN kl USING (steam_id) FULL JOIN dt USING (steam_id) FULL JOIN mt USING (steam_id)
+			FROM sess FULL JOIN kl USING (steam_id) FULL JOIN dt USING (steam_id)
+				FULL JOIN mt USING (steam_id) FULL JOIN pre_feed USING (steam_id)
 		)
 	`;
 }
@@ -186,11 +200,19 @@ export const GET = route(async (event) => {
 		return found[0]!;
 	});
 	const ids = server ? [numbered[server - 1].id] : numbered.map((row) => row.id);
+	// These are the first feed.enable audit timestamps on each numbered 44th server.
+	// Keep them fixed so later audit-log retention cannot erase historical K/D.
+	const feedActivation = [
+		'2026-09-19T18:26:43.514Z', '2026-09-19T18:27:02.148Z',
+		'2026-09-19T18:27:08.676Z', '2026-09-19T18:27:15.037Z',
+		'2026-09-19T18:27:20.663Z'
+	];
+	const feedStarts = (server ? [server] : [1, 2, 3, 4, 5]).map((number) => new Date(feedActivation[number - 1]));
 	const range = event.url.searchParams.get('range') || 'all';
 	const durations: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90 };
 	if (range !== 'all' && !(range in durations)) throw new ApiError(400, 'Invalid leaderboard range.');
 	const from = range === 'all' ? new Date(0) : new Date(Date.now() - durations[range] * 86400_000);
-	const base = boardBase(ids, from);
+	const base = boardBase(ids, from, feedStarts);
 	const search = str(event.url.searchParams.get('search'), 80);
 	const pattern = `%${search}%`;
 	const searchWhere = search ? sql`(a.steam_id ILIKE ${pattern} OR EXISTS (
@@ -298,11 +320,17 @@ export const GET = route(async (event) => {
 			SELECT COUNT(*) FILTER (WHERE NOT suicide AND killer_steam_id IS NOT NULL) AS kills,
 				COUNT(*) FILTER (WHERE victim_steam_id IS NOT NULL) AS deaths
 			FROM kills WHERE server_id IN (${sqlList(ids)}) AND ts >= ${from}
+		), pre_feed AS (
+			SELECT COALESCE(SUM(ps.kills), 0) AS kills, COALESCE(SUM(ps.deaths), 0) AS deaths
+			FROM player_sessions ps JOIN (VALUES ${feedStartValues(ids, feedStarts)})
+				AS fs(server_id, starts_at) ON fs.server_id = ps.server_id
+			WHERE ps.joined_at >= ${from} AND ps.left_at <= fs.starts_at
 		)
 		SELECT (SELECT COUNT(*) FROM players) AS "trackedPlayers", sessions.online_players AS "onlinePlayers",
-			feed.kills AS "totalKills", feed.deaths AS "totalDeaths",
+			COALESCE(feed.kills, 0) + pre_feed.kills AS "totalKills",
+			COALESCE(feed.deaths, 0) + pre_feed.deaths AS "totalDeaths",
 			sessions.seconds_tracked AS "secondsTracked", sessions.updated_at AS "updatedAt"
-		FROM sessions CROSS JOIN feed
+		FROM sessions CROSS JOIN feed CROSS JOIN pre_feed
 	`);
 	return apiJson({
 		group: 'all', server, range, total: finite(countRow?.total),

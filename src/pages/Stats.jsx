@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { PAGE_SIZES, PERIOD_OPTIONS, SORT_OPTIONS, isRankedView, pageInfo, statsParams } from '../lib/leaderboard.js'
+import { useEffect, useRef, useState } from 'react'
+import { PAGE_SIZES, PERIOD_OPTIONS, SORT_OPTIONS, isRankedView, pageInfo, statsParams, validPeriod, profileLink } from '../lib/leaderboard.js'
 import '../leaderboard.css'
 
 const STATS_API_URL = import.meta.env.VITE_PLAYER_STATS_API_URL || '/api/player-stats.php'
@@ -48,16 +48,6 @@ function serversPlayed(player) {
     .map((key) => Number(String(key).replace('server-', '')))
     .filter(Number.isFinite).sort((a, b) => a - b).map((number) => `#${number}`).join(', ') || '—'
 }
-function average(players, field) {
-  const values = players.map((player) => player[field]).filter((value) => value != null).map(Number).filter(Number.isFinite)
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
-}
-function rankMetric(players, player, field) {
-  const ranked = players.filter((entry) => entry[field] != null && Number.isFinite(Number(entry[field])))
-    .slice().sort((a, b) => Number(b[field]) - Number(a[field]))
-  const index = ranked.findIndex((entry) => entry.id === player.id)
-  return index < 0 ? null : { rank: index + 1, total: ranked.length }
-}
 function focusSection(node) {
   if (!node) return
   node.focus({ preventScroll: true })
@@ -71,20 +61,82 @@ async function fetchStatsPayload(options = {}) {
   if (!response.ok) throw new Error(String(payload?.error?.message || payload?.error || `Stats API returned ${response.status}`))
   if (payload?.group !== 'all') throw new Error('The API did not return combined player statistics.')
   if (query.server && String(payload.server) !== String(query.server)) throw new Error('The API did not return the requested server.')
-  if (query.leaders) {
+  if (!query.server && payload.server != null) throw new Error('The API did not return all five servers.')
+  if (query.meta) {
+    if (payload.version < 2 || !Array.isArray(payload.seasons)) throw new Error('Season support is not available yet.')
+  } else if (query.career) {
+    if (payload.version < 2 || payload.playerId !== query.career || !payload.career) throw new Error('Career details are not available yet.')
+  } else if (query.leaders) {
     if (!payload.leaders || typeof payload.leaders !== 'object' || Array.isArray(payload.leaders)) throw new Error('Category leaders are temporarily unavailable.')
   } else if (!Array.isArray(payload.players) || !Number.isFinite(Number(payload.total))) {
     throw new Error('The stats API returned an invalid player list.')
   }
+  if (!query.meta && !query.career && payload.range !== (query.range || 'all')) throw new Error('The API returned the wrong period.')
+  if (query.player && payload.version < 2) throw new Error('Full player rankings require the updated stats service.')
   return payload
 }
 
-function PlayerProfile({ player, pool, poolState, scope, onBack, profileRef }) {
-  const [compareId, setCompareId] = useState('')
-  useEffect(() => setCompareId(''), [player.id])
-  const comparison = pool.find((entry) => entry.id === compareId) || null
-  const options = useMemo(() => pool.filter((entry) => entry.id !== player.id).slice()
-    .sort((a, b) => String(a.name).localeCompare(String(b.name))), [pool, player.id])
+function CareerDetails({ playerId, server }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    setData(null); setError('')
+    fetchStatsPayload({ career: playerId, server, signal: controller.signal })
+      .then(payload => { if (!controller.signal.aborted) setData(payload.career) })
+      .catch(error => { if (!controller.signal.aborted) setError(error.message) })
+    return () => controller.abort()
+  }, [playerId, server])
+  return <section className="player-comparison-section">
+    <h3>Recorded match career</h3>
+    <p className="stats-footnote">All recorded completed matches on {server ? `Server #${server}` : 'all five servers'}, independent of the period above. Coverage depends on recorded match/feed history; these totals can differ from the historical leaderboard.</p>
+    {error ? <p role="status">{error}</p> : !data ? <p role="status">Loading match history…</p> : !data.matches ? <p>No completed-match records are available for this player yet.</p> : <>
+      <div className="player-profile-grid">{[
+        ['Best kill streak', formatNumber(data.killStreak)],
+        ['Longest recorded kill', data.longestM == null ? 'Not recorded' : `${decimal(data.longestM)} m`],
+        ['Vehicle kills', formatNumber(data.vehicleKills)],
+        ['Current result streak', data.streak ? `${data.streak.n} ${data.streak.kind}${data.streak.n === 1 ? '' : 's'}` : 'No streak'],
+      ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+      <h4>Recent matches</h4>
+      <div className="player-comparison-table-wrap"><table className="player-comparison-table">
+        <thead><tr>{['Ended', 'Server', 'Map / faction', 'Result', 'Kills', 'Deaths', 'Cash earned'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
+        <tbody>{(data.last || []).map(match => <tr key={`${match.serverId}-${match.matchId}`}>
+          <td>{formatLastSeen(match.endedAt)}</td><td>{match.serverName}</td><td>{match.map || 'Unknown'} / {match.faction || 'Unknown'}</td>
+          <td>{match.result || 'Unrecorded'}</td><td>{formatNumber(match.kills)}</td><td>{formatNumber(match.deaths)}</td><td>{formatNumber(match.cashDelta)}</td>
+        </tr>)}</tbody>
+      </table></div>
+      {[['Map performance', data.maps], ['Faction performance', data.factions]].map(([label, groups]) => <details key={label} className="board-data-notes"><summary>{label}</summary>
+        <div className="player-comparison-table-wrap"><table className="player-comparison-table"><thead><tr><th scope="col">{label}</th><th scope="col">Matches</th><th scope="col">W / L / D</th><th scope="col">Kills / deaths</th></tr></thead>
+          <tbody>{(groups || []).map(group => <tr key={group.key}><td>{group.key}</td><td>{formatNumber(group.matches)}</td><td>{group.wins} / {group.losses} / {group.draws}</td><td>{formatNumber(group.kills)} / {formatNumber(group.deaths)}</td></tr>)}</tbody>
+        </table></div>
+      </details>)}
+    </>}
+  </section>
+}
+
+function PlayerProfile({ player, scope, range, server, onBack, profileRef, loading, error }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [comparison, setComparison] = useState(null)
+  const [compareState, setCompareState] = useState('')
+  const [careerOpen, setCareerOpen] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    setResults([]); setComparison(null); setCompareState('')
+    if (!query.trim()) return () => controller.abort()
+    setCompareState('Searching…')
+    const timer = window.setTimeout(() => {
+      fetchStatsPayload({ search: query, range, server, limit: 20, signal: controller.signal })
+        .then(payload => {
+          if (!controller.signal.aborted) {
+            const found = payload.players.filter(p => p.id !== player.id)
+            setResults(found); setCompareState(found.length ? '' : 'No matching player in this period and server scope.')
+          }
+        })
+        .catch(error => { if (!controller.signal.aborted) setCompareState(error.message) })
+    }, 250)
+    return () => { controller.abort(); window.clearTimeout(timer) }
+  }, [query, player.id, range, server])
   const stats = [
     ['Kills', formatNumber(player.totalKills)], ['Deaths', formatNumber(player.totalDeaths)], ['K/D', decimal(player.kd)],
     ['Kills per hour', decimal(player.killsPerHour)], ['Headshots', formatNumber(player.headshots)],
@@ -93,52 +145,47 @@ function PlayerProfile({ player, pool, poolState, scope, onBack, profileRef }) {
     ['Win rate', percentage(player.winRate)], ['Playtime', formatDuration(player.secondsTracked)],
     ['Seed time', `${formatNumber(player.seedMinutes)}m`], ['Primary faction', primaryFaction(player)], ['Servers played', serversPlayed(player)],
   ]
-  return (
-    <article className="player-profile-card" ref={profileRef} tabIndex={-1} aria-label={`${player.name} player profile`}>
-      <div className="player-profile-heading">
-        <div><p className="kicker">Player profile // {scope}</p><h2>{player.name}</h2><p>{player.id}</p></div>
-        <button type="button" onClick={onBack}>← Back to leaderboard</button>
-      </div>
-      <div className="player-profile-grid">{stats.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-      <div className="player-profile-meta">
-        <p><span>First seen</span>{formatLastSeen(player.firstSeen)}</p>
-        <p><span>Last seen</span>{formatLastSeen(player.lastSeen)}</p>
-        <p><span>Known aliases</span>{player.aliases?.length ? player.aliases.join(', ') : 'None recorded'}</p>
-      </div>
-      <section className="player-comparison-section">
-        <div className="player-comparison-heading">
-          <div><p className="kicker">Player comparison</p><h3>How {player.name} compares</h3></div>
-          <label><span>Compare with</span><select aria-label="Compare with" value={compareId} onChange={(event) => setCompareId(event.target.value)} disabled={poolState !== 'ready'}>
-            <option value="">Comparison sample average</option>
-            {options.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-          </select></label>
-        </div>
-        <p className="stats-footnote">Comparisons use up to 500 players ordered by kills for this server selection and period, not the entire community.</p>
-        {poolState === 'loading' && <p role="status">Loading comparison data…</p>}
-        {poolState === 'error' && <p role="status">Comparison data is temporarily unavailable. The player’s individual stats are still shown above.</p>}
-        {poolState === 'ready' && <>
-          <div className="player-rank-grid">{[['Kills', 'totalKills'], ['K/D', 'kd'], ['Matches', 'matchesSeen'], ['Playtime', 'secondsTracked']].map(([label, field]) => {
-            const rank = rankMetric(pool, player, field)
-            return <div key={field}><span>{label} position</span><strong>{rank ? `#${rank.rank} of ${rank.total}` : '—'}</strong><small>Within the comparison sample</small></div>
-          })}</div>
-          <div className="player-comparison-table-wrap"><table className="player-comparison-table">
-            <thead><tr><th scope="col">Metric</th><th scope="col">{player.name}</th><th scope="col">{comparison?.name || 'Sample average'}</th></tr></thead>
-            <tbody>{[
-              ['Kills', 'totalKills', formatNumber], ['Deaths', 'totalDeaths', formatNumber], ['K/D', 'kd', decimal],
-              ['Matches', 'matchesSeen', formatNumber], ['Cash', 'cash', formatNumber], ['Playtime', 'secondsTracked', formatDuration],
-            ].map(([label, field, format]) => {
-              const value = comparison ? comparison[field] : average(pool, field)
-              return <tr key={field}><td>{label}</td><td>{format(player[field])}</td><td>{format(!comparison && format === formatNumber && value != null ? Math.round(value) : value)}</td></tr>
-            })}</tbody>
-          </table></div>
-        </>}
-      </section>
-    </article>
-  )
+
+  return <article className="player-profile-card" ref={profileRef} tabIndex={-1} aria-label={`${player.name} player profile`}>
+    <div className="player-profile-heading">
+      <div><p className="kicker">Player profile // {scope}</p><h2>{player.name}</h2><p>{player.id}</p>
+        <a href={profileLink(player.id, { range, server })}>Permalink to this profile</a></div>
+      <button type="button" onClick={onBack}>← Back to leaderboard</button>
+    </div>
+    <div className="player-profile-grid">{stats.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    <div className="player-profile-meta"><p><span>First seen</span>{formatLastSeen(player.firstSeen)}</p><p><span>Last seen</span>{formatLastSeen(player.lastSeen)}</p><p><span>Known aliases</span>{player.aliases?.join(', ') || 'None recorded'}</p></div>
+    <section className="player-comparison-section">
+      <h3>Full leaderboard positions</h3>
+      <p className="stats-footnote">All recorded players in {scope}; no minimum playtime. Positions use the same tie-breaks as the leaderboard.</p>
+      {loading && <p role="status">Loading full rankings…</p>}
+      {error && <p role="status">{error}</p>}
+      <div className="player-rank-grid">{[['Kills', 'kills'], ['K/D', 'kd'], ['Matches', 'matches'], ['Playtime', 'time']].map(([label, metric]) => {
+        const position = player.ranks?.[metric]
+        return <div key={metric}><span>{label} position</span><strong>{position?.rank ? `#${formatNumber(position.rank)} of ${formatNumber(position.total)}` : '—'}</strong></div>
+      })}</div>
+      <h3>Compare with another player</h3>
+      <label className="profile-compare-search"><span>Name, previous name or Steam ID</span><input type="search" maxLength={80} value={query} onChange={event => setQuery(event.target.value)} /></label>
+      {compareState && <p role="status">{compareState}</p>}
+      {!!results.length && <label><span>Matching players (up to 20; narrow your search for more)</span><select aria-label="Comparison player" value={comparison?.id || ''} onChange={event => setComparison(results.find(p => p.id === event.target.value) || null)}>
+        <option value="">Choose a player</option>{results.map(p => <option value={p.id} key={p.id}>{p.name} · {p.id}</option>)}
+      </select></label>}
+      {comparison && <div className="player-comparison-table-wrap"><table className="player-comparison-table">
+        <thead><tr><th scope="col">Metric</th><th scope="col">{player.name}</th><th scope="col">{comparison.name}</th></tr></thead>
+        <tbody>{[['Kills', 'totalKills', formatNumber], ['Deaths', 'totalDeaths', formatNumber], ['K/D', 'kd', decimal], ['Matches', 'matchesSeen', formatNumber], ['Cash', 'cash', formatNumber], ['Playtime', 'secondsTracked', formatDuration]].map(([label, field, format]) => <tr key={field}><th scope="row">{label}</th><td>{format(player[field])}</td><td>{format(comparison[field])}</td></tr>)}</tbody>
+      </table></div>}
+    </section>
+    <details className="board-data-notes" open={careerOpen} onToggle={event => setCareerOpen(event.currentTarget.open)}>
+      <summary>Career records, recent matches and map / faction performance</summary>
+      {careerOpen && <CareerDetails playerId={player.id} server={server} />}
+    </details>
+  </article>
 }
 
 export default function Stats() {
-  const [filters, setFilters] = useState({ search: '', sort: 'kills', range: 'all', server: '', page: 1, pageSize: 25 })
+  const [filters, setFilters] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return { search: '', sort: 'kills', range: validPeriod(params.get('range')) ? params.get('range') : 'all', server: /^[1-5]$/.test(params.get('server')) ? params.get('server') : '', page: 1, pageSize: 25 }
+  })
   const { search, sort, range, server, page, pageSize } = filters
   const [players, setPlayers] = useState([])
   const [total, setTotal] = useState(0)
@@ -146,12 +193,16 @@ export default function Stats() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedId, setSelectedId] = useState(() => {
+    const id = new URLSearchParams(window.location.search).get('player')
+    return /^\d{17}$/.test(id) ? id : null
+  })
   const [selectedLookup, setSelectedLookup] = useState(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState('')
-  const [comparisonPool, setComparisonPool] = useState([])
-  const [poolState, setPoolState] = useState('idle')
+  const [seasons, setSeasons] = useState([])
+  const [metaError, setMetaError] = useState('')
+  const [snapshotAt, setSnapshotAt] = useState(null)
   const [leadersOpen, setLeadersOpen] = useState(false)
   const [leaders, setLeaders] = useState(null)
   const [leadersError, setLeadersError] = useState('')
@@ -159,7 +210,8 @@ export default function Stats() {
   const profileRef = useRef(null)
   const returnToBoard = useRef(false)
   const scope = server ? `Server #${server}` : 'All five servers'
-  const periodLabel = PERIOD_OPTIONS.find(([key]) => key === range)?.[1] || 'All time'
+  const periods = [...PERIOD_OPTIONS, ...seasons.map(season => [`s:${season.key}`, `${season.name} (${season.kind === 'custom' ? 'community' : 'official'})`])]
+  const periodLabel = periods.find(([key]) => key === range)?.[1] || 'Selected season'
   const sortLabel = SORT_OPTIONS.find(([key]) => key === sort)?.[1] || 'Kills'
   const pagination = pageInfo(total, page, pageSize)
   const ranked = isRankedView(search, sort)
@@ -198,6 +250,7 @@ export default function Stats() {
         setPlayers(payload.players)
         setTotal(Number(payload.total))
         setSummary(payload.summary || null)
+        setSnapshotAt(payload.snapshotAt || payload.generatedAt)
       } catch (fetchError) {
         if (!controller.signal.aborted) { setError(fetchError.message || 'Unable to load the leaderboard.'); setPlayers([]) }
       } finally {
@@ -220,39 +273,33 @@ export default function Stats() {
     return () => controller.abort()
   }, [leadersOpen, range, server, refresh])
 
-  // The bounded comparison sample is separate from server-paginated rankings.
   useEffect(() => {
     const controller = new AbortController()
-    setComparisonPool([])
-    setPoolState(selectedId ? 'loading' : 'idle')
-    if (selectedId) {
-      fetchStatsPayload({ range, server, limit: 500, signal: controller.signal })
-        .then((payload) => { if (!controller.signal.aborted) { setComparisonPool(payload.players); setPoolState('ready') } })
-        .catch(() => { if (!controller.signal.aborted) setPoolState('error') })
-    }
+    setSeasons([]); setMetaError('')
+    fetchStatsPayload({ meta: true, server, signal: controller.signal })
+      .then(payload => { if (!controller.signal.aborted) setSeasons(payload.seasons) })
+      .catch(() => { if (!controller.signal.aborted) setMetaError('Season filters are temporarily unavailable. Existing periods remain available.') })
     return () => controller.abort()
-  }, [Boolean(selectedId), range, server, refresh])
+  }, [server, refresh])
 
-  const selectedFromList = players.find((player) => player.id === selectedId)
+  const selectedFromList = players.find(player => player.id === selectedId)
   useEffect(() => {
     const controller = new AbortController()
-    setSelectedLookup(null)
-    setProfileError('')
-    setProfileLoading(Boolean(selectedId && !selectedFromList))
-    if (selectedId && !selectedFromList) {
-      fetchStatsPayload({ search: selectedId, range, server, limit: 500, signal: controller.signal })
-        .then((payload) => {
+    setSelectedLookup(null); setProfileError(''); setProfileLoading(Boolean(selectedId))
+    if (selectedId) {
+      fetchStatsPayload({ player: selectedId, range, server, limit: 1, signal: controller.signal })
+        .then(payload => {
           if (controller.signal.aborted) return
-          const player = payload.players.find((entry) => entry.id === selectedId)
-          if (!player) throw new Error('This player has no recorded stats in the selected period and server scope.')
+          const player = payload.players.find(entry => entry.id === selectedId)
+          if (!player) throw new Error('No recorded stats in this period and server scope.')
           setSelectedLookup(player)
         })
-        .catch((fetchError) => { if (!controller.signal.aborted) setProfileError(fetchError.message) })
+        .catch(error => { if (!controller.signal.aborted) setProfileError(error.message) })
         .finally(() => { if (!controller.signal.aborted) setProfileLoading(false) })
     }
     return () => controller.abort()
-  }, [selectedId, selectedFromList, range, server, refresh])
-  const selectedPlayer = selectedFromList || (selectedLookup?.id === selectedId ? selectedLookup : null)
+  }, [selectedId, range, server, refresh])
+  const selectedPlayer = selectedLookup?.id === selectedId ? selectedLookup : selectedFromList
 
   useEffect(() => {
     if (selectedPlayer) focusSection(profileRef.current)
@@ -283,13 +330,16 @@ export default function Stats() {
         <article><span>Tracked hours</span><strong>{summary ? formatNumber(Math.round(Number(summary.secondsTracked || 0) / 3600)) : '—'}</strong></article>
       </div>
 
+      {range.startsWith('s:') && <p className="stats-notice">Season statistics use WARCON’s completed-match records and session activity. Matches count by their end time. These are separate from the historical K/D totals used by all-time and rolling-period boards.</p>}
+      {metaError && <p role="status" className="stats-footnote">{metaError}</p>}
+      {snapshotAt && <p className="stats-footnote">Snapshot: {formatLastSeen(snapshotAt)} · shared for up to 15 seconds</p>}
       {!selectedId && <>
         <div className="stats-toolbar board-toolbar">
           <label className="board-search"><span>Find a player</span><input type="search" maxLength={80} value={search} onChange={(event) => changeFilter('search', event.target.value)} placeholder="Name, previous name or Steam ID" /></label>
           <label><span>Server</span><select aria-label="Server" value={server} onChange={(event) => changeFilter('server', event.target.value)}>
             <option value="">All five servers</option>{[1, 2, 3, 4, 5].map((number) => <option key={number} value={String(number)}>Server #{number}</option>)}
           </select></label>
-          <label><span>Period</span><select aria-label="Period" value={range} onChange={(event) => changeFilter('range', event.target.value)}>{PERIOD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label><span>Period</span><select aria-label="Period" value={range} onChange={(event) => changeFilter('range', event.target.value)}>{periods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label><span>Rank by</span><select aria-label="Rank by" value={sort} onChange={(event) => changeFilter('sort', event.target.value)}>{SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </div>
         <div className="board-list-heading">
@@ -338,10 +388,10 @@ export default function Stats() {
       </>}
 
       {selectedId && <>
-        {selectedPlayer && <PlayerProfile player={selectedPlayer} pool={comparisonPool} poolState={poolState} scope={`${scope} · ${periodLabel}`} onBack={backToBoard} profileRef={profileRef} />}
+        {selectedPlayer && <PlayerProfile key={`${selectedId}:${range}:${server}`} player={selectedPlayer} scope={`${scope} · ${periodLabel}`} range={range} server={server} loading={profileLoading} error={profileError} onBack={backToBoard} profileRef={profileRef} />}
         {!selectedPlayer && <div className="stats-notice" role="status"><strong>{profileLoading ? 'Loading player profile…' : profileError || 'Loading player profile…'}</strong><p><button className="board-button" type="button" onClick={backToBoard}>← Back to leaderboard</button></p></div>}
       </>}
-      <details className="board-data-notes"><summary>About these statistics</summary><p className="stats-footnote">WARCON data covers the selected 44th servers and period. Kills and deaths combine recorded session totals from before kill-feed tracking began with later kill-feed events. Sessions crossing that change may have incomplete totals. Match results come from WARCON’s match history. Cash is the sum of recorded session cash, not a persistent wallet. Category leaders require at least 60 minutes played; the main table includes all recorded players. Rankings follow the selected metric and server-side tie-breaks. Profile comparisons use a separate sample of up to 500 players ordered by kills.</p></details>
+      <details className="board-data-notes"><summary>About these statistics</summary><p className="stats-footnote">WARCON data covers the selected 44th servers and period. Kills and deaths combine recorded session totals from before kill-feed tracking began with later kill-feed events. Sessions crossing that change may have incomplete totals. Match results come from WARCON’s match history. Cash is the sum of recorded session cash, not a persistent wallet. Category leaders require at least 60 minutes played; the main table includes all recorded players. Rankings follow the selected metric and server-side tie-breaks. Profile positions cover the full selected leaderboard, not a sample. Comparisons use a searched player in the same scope. Career details cover recorded completed matches across all time and may not match historical/feed totals.</p></details>
     </section>
   )
 }

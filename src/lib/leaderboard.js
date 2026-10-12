@@ -10,10 +10,14 @@ export const PERIOD_OPTIONS = [
 ]
 export const PAGE_SIZES = [25, 50, 100]
 
-export function statsParams({ search = '', sort = 'kills', range = 'all', server = '', limit = 25, offset = 0, leaders = false } = {}) {
+export function validPeriod(range) {
+  return PERIOD_OPTIONS.some(([key]) => key === range) || /^s:[A-Za-z0-9_-]{1,80}$/.test(String(range))
+}
+
+export function statsParams({ search = '', sort = 'kills', range = 'all', server = '', limit = 25, offset = 0, leaders = false, player = '', career = '', meta = false } = {}) {
   const params = new URLSearchParams({
     group: 'all',
-    range: PERIOD_OPTIONS.some(([key]) => key === range) ? range : 'all',
+    range: validPeriod(range) ? range : 'all',
     sort: SORT_OPTIONS.some(([key]) => key === sort) ? sort : 'kills',
     limit: String(Math.min(500, Math.max(1, Math.floor(Number(limit) || 25)))),
     offset: String(Math.min(100000, Math.max(0, Math.floor(Number(offset) || 0)))),
@@ -22,7 +26,15 @@ export function statsParams({ search = '', sort = 'kills', range = 'all', server
   if (query) params.set('search', query)
   if (/^[1-5]$/.test(String(server))) params.set('server', String(server))
   if (leaders) params.set('leaders', '1')
+  if (/^\d{17}$/.test(String(player))) params.set('player', String(player))
+  if (/^\d{17}$/.test(String(career))) params.set('career', String(career))
+  if (meta) params.set('meta', '1')
   return params
+}
+
+export function profileLink(id, { range = 'all', server = '' } = {}) {
+  const params = statsParams({ player: id, range, server })
+  return `/stats?${['player', 'range', 'server'].filter(key => params.has(key)).map(key => `${key}=${encodeURIComponent(params.get(key))}`).join('&')}`
 }
 
 export function pageInfo(total, page, pageSize) {

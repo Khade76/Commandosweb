@@ -2,6 +2,90 @@
 
 WARCON is the persistent source of truth for `/stats` on `44thwardogs.com`.
 
+## Stats adapter v2 (validated; not deployed)
+
+This candidate targets the WARCON update reviewed on 12 October 2026. It retains
+the historical session/feed calculations for `all`, `7d`, `30d`, and `90d`, while
+sharing a 15-second aggregate snapshot across pages, sorts, searches, category
+leaders, and exact-player rank lookups. At most six snapshots and two concurrent
+snapshot builds are retained per web process. The first uncached request still
+performs the historical query; this is not a conversion to native match totals.
+Page/profile metadata is cached inside its parent snapshot (up to 24 pages), so
+repeat visits avoid those database reads too. The original response-cache helper
+continues to enforce four concurrent requests and coalesce identical in-flight
+requests, with no second completed-response TTL extending snapshot freshness.
+
+New query options, all behind the existing server-side bearer key:
+
+- `player=<SteamID64>`: exact player plus full-scope positions for kills, K/D,
+  matches and playtime. These are deterministic positions including tie-breaks,
+  not shared competition ranks. No minimum playtime; category leaders still use
+  60 minutes. The old 500-player profile sample is removed.
+- `meta=1`: started official/community seasons for the configured organisation.
+- `range=s:<key>`: native WARCON season totals using `rangeBase` / `seasonBase`.
+  Completed matches count by end time; native day rollups supply session activity.
+  These are deliberately labelled separately from legacy historical/feed totals.
+  Unknown/future seasons error, never silently fall back to all-time.
+- `career=<SteamID64>`: an explicit public allowlist from native `loadCareer`,
+  restricted to the selected configured servers. Career records/recent matches
+  cover all recorded completed matches, independently of the board period. No
+  administrative dossier, notes, bans, credentials or native alternate ranks are
+  returned. Cached for 30 seconds, at most 24 profiles/two concurrent loads.
+
+The website adds server/period-preserving profile permalinks, searchable player
+comparisons, lazy career details, and clear unavailable/empty states. Only the
+same-origin PHP proxy sees the bearer key. It requires adapter version 2 for new
+queries and checks returned scope, period and career identity. Existing bots can
+continue using the unchanged player/summary fields and all-time defaults.
+
+### Deployment gate (requires approval; do not use the old single-file install)
+
+1. Back up the live WARCON checkout/config/database and protected-file manifest,
+   plus the current website build/PHP endpoint. Verify a clean/reviewed checkout.
+2. Stage these mappings in an isolated WARCON checkout based on the live version:
+   `player-stats-route.ts` -> `src/routes/api/public/player-stats/+server.ts`;
+   `wardogs-stats-base.ts` -> `src/lib/server/wardogs-stats-base.ts`;
+   `wardogs-stats-snapshot.ts` -> `src/lib/server/wardogs-stats-snapshot.ts`.
+3. Build/type-check the matched WARCON source. Repeat baseline/candidate database
+   comparisons in a read-only, repeatable-read transaction or restored clone.
+   No database migration is required by this adapter.
+4. Add/update SHA-256 entries for all three installed files in the existing
+   updater `protected-files.json` `files` mapping. Preserve every unrelated guard,
+   including the existing response cache, reserved-slot and Officer Panel guards.
+   Update any route-specific required markers if needed. Do not disable the guard.
+5. With restart approval, deploy/rebuild WARCON first; check authentication,
+   health, all five scopes, ranks, seasons, careers and legacy bot responses.
+6. Lint `public/api/player-stats.php` with the hosting PHP version; run
+   `node --test scripts/test-leaderboard.mjs scripts/test-stats-snapshot.mjs`,
+   the production Vite build and `scripts/test-stats-ui.mjs` against its preview.
+   The UI test accepts `PLAYWRIGHT_MODULE` if Playwright is installed separately.
+7. Publish the website build and PHP proxy together, smoke-test live, then verify
+   the guarded updater accepts the new hashes. Roll back website/PHP and the
+   matched WARCON image/source together if necessary; do not roll back the DB.
+
+The older installation/history sections below describe v1 and previous tracking
+patches. They are not the deployment procedure for this three-file v2 adapter.
+
+### Validation on 12 October 2026
+
+- Isolated build based on live WARCON `c23e87da4ad6c034fefa251cabb06a2e600d24d3`:
+  full Svelte/TypeScript check reported zero errors/warnings; frontend/SSR and
+  worker builds passed; 827 WARCON library tests passed, one dictionary test skipped.
+- Website production build, 20 Node regression tests, and headless Chrome checks
+  passed (ranks beyond 500, player comparisons, season/server scope, lazy career,
+  permalinks, and mobile overflow).
+- PHP 8.3.35 lint and 36 proxy assertions passed with cURL, and the same 36 with
+  the stream fallback. Tests use loopback fixtures/fake credentials, not OVH.
+  Run `php scripts/test-stats-proxy.php` and
+  `php -d disable_functions=curl_init scripts/test-stats-proxy.php` to repeat.
+- Baseline/candidate query comparison uses a PostgreSQL read-only repeatable-read
+  transaction. Historical player fields, totals and summaries matched for the
+  tested global and server scopes; exact rank 751, name sorting, player lookup,
+  native season and career queries passed.
+
+No production restart, website publication or updater-manifest modification was
+part of validation. Live end-to-end checks remain part of an approved deployment.
+
 The current route reads the same kill feed, match outcomes and session fields as WARCON's leaderboard. It aggregates Servers #1–#5 by default, or one server with `server=1` through `server=5`. `range=7d|30d|90d|all` and `sort=kills|deaths|kd|perHour|time|seeded|matches|wins|winRate|cash` match WARCON's leaderboard choices. The website and Discord bot use all-time unless a website visitor selects another period. Leader cards apply WARCON's 60-minute minimum playtime.
 
 The older Standard/Hardcore split and `cash_earned` patch instructions below are historical and are not required by the current route. Cash now means WARCON's sum of session cash. Kills and deaths combine feed events with the recorded session totals from sessions completed before the kill feed was enabled on each server on 19 September 2026. Sessions crossing that boundary are excluded from the historical addition because their counters cannot be split without double counting. Historical Hardcore events remain in all-time totals.

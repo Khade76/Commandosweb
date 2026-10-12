@@ -69,6 +69,10 @@
 .stats-leaderboard .player-profile-heading h2 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1.1; overflow-wrap: anywhere; }
 .stats-leaderboard .player-comparison-heading h3 { font-size: 1.4rem; line-height: 1.2; overflow-wrap: anywhere; }
 .stats-leaderboard .player-profile-grid strong { overflow-wrap: anywhere; }
+.stats-leaderboard .profile-compare-search { display: grid; gap: 8px; margin: 12px 0; }
+.stats-leaderboard .player-comparison-section :is(input, select) { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: #0c0f0b; color: var(--text); font: inherit; }
+.stats-leaderboard .player-comparison-section h4 { margin-top: 24px; }
+.stats-leaderboard .player-comparison-table { min-width: 550px; }
 .stats-leaderboard :is(button, input, select, summary, [tabindex]):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .stats-leaderboard .board-mobile-hint { display: none; }
 .board-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
@@ -104,6 +108,7 @@
   .stats-leaderboard .board-category-body .stats-leader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats-leaderboard .board-category-body .stats-leader-card { min-height: 145px; padding: 12px; }
   .stats-leaderboard .player-profile-card { padding: 16px; }
+  .stats-leaderboard .player-profile-grid, .stats-leaderboard .player-rank-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .stats-leaderboard * { scroll-behavior: auto !important; transition: none !important; }

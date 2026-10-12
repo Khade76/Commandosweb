@@ -13,6 +13,9 @@
     "test:bisect": "node scripts/test-bisect.mjs",
     "test:rcon": "node scripts/test-rcon.mjs",
     "test:servers": "node --test scripts/test-server-directory.mjs",
+    "test:stats": "node --test scripts/test-leaderboard.mjs scripts/test-stats-snapshot.mjs",
+    "test:stats:ui": "node scripts/test-stats-ui.mjs",
+    "test:stats:proxy": "php scripts/test-stats-proxy.php",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

@@ -22,7 +22,18 @@ $sort = isset($_GET['sort']) ? (string)$_GET['sort'] : 'kills';
 if (!in_array($sort, $allowedSorts, true)) $sort = 'kills';
 $group = 'all';
 $range = isset($_GET['range']) ? (string)$_GET['range'] : 'all';
-if (!in_array($range, ['7d', '30d', '90d', 'all'], true)) $range = 'all';
+if (!in_array($range, ['7d', '30d', '90d', 'all'], true) && !preg_match('/^s:[A-Za-z0-9_-]{1,80}$/', $range)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid period']);
+    exit;
+}
+foreach (['player', 'career'] as $parameter) {
+    if (isset($_GET[$parameter]) && !preg_match('/^\d{17}$/', (string)$_GET[$parameter])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid Steam ID']);
+        exit;
+    }
+}
 $server = isset($_GET['server']) ? trim((string)$_GET['server']) : '';
 if ($server !== '' && !preg_match('/^[1-5]$/', $server)) {
     http_response_code(400);
@@ -91,9 +102,11 @@ function wardogsWarconStatsFetch(array $config, array $query): ?array
         throw new RuntimeException('WARCON stats returned ' . $message);
     }
     $leadersOnly = (($query['leaders'] ?? '') === '1');
-    $validPayload = is_array($payload) && ($leadersOnly
+    $specialPayload = isset($query['career']) ? isset($payload['career']) && is_array($payload['career'])
+        : (isset($query['meta']) ? isset($payload['seasons']) && is_array($payload['seasons']) : null);
+    $validPayload = is_array($payload) && ($specialPayload ?? ($leadersOnly
         ? isset($payload['leaders']) && is_array($payload['leaders'])
-        : isset($payload['players']) && is_array($payload['players']));
+        : isset($payload['players']) && is_array($payload['players'])));
     if (!$validPayload) {
         throw new RuntimeException('WARCON stats returned invalid JSON');
     }
@@ -113,12 +126,31 @@ try {
     if ($search !== '') $query['search'] = $search;
     if ($server !== '') $query['server'] = $server;
     if (($_GET['leaders'] ?? '') === '1') $query['leaders'] = '1';
+    foreach (['player', 'career'] as $parameter) {
+        if (isset($_GET[$parameter])) $query[$parameter] = (string)$_GET[$parameter];
+    }
+    if (($_GET['meta'] ?? '') === '1') $query['meta'] = '1';
 
     $warconPayload = wardogsWarconStatsFetch($config, $query);
     if ($warconPayload !== null) {
         if (($warconPayload['group'] ?? null) !== $group
+            || ($server === '' && ($warconPayload['server'] ?? null) !== null)
             || ($server !== '' && (string)($warconPayload['server'] ?? '') !== $server)) {
             throw new RuntimeException('WARCON stats did not honor the requested scope');
+        }
+        if ((isset($query['player']) || isset($query['career']) || isset($query['meta']) || str_starts_with($range, 's:'))
+            && (int)($warconPayload['version'] ?? 0) < 2) {
+            throw new RuntimeException('The WARCON stats adapter needs updating');
+        }
+        if (isset($query['career']) && ($warconPayload['playerId'] ?? null) !== $query['career']) {
+            throw new RuntimeException('WARCON returned the wrong player');
+        }
+        if (isset($query['player']) && (count($warconPayload['players']) > 1
+            || (count($warconPayload['players']) === 1 && ($warconPayload['players'][0]['id'] ?? null) !== $query['player']))) {
+            throw new RuntimeException('WARCON returned the wrong player');
+        }
+        if (!isset($query['meta']) && !isset($query['career']) && ($warconPayload['range'] ?? null) !== $range) {
+            throw new RuntimeException('WARCON returned the wrong period');
         }
         header('X-44th-Stats-Source: warcon');
         echo json_encode($warconPayload, JSON_UNESCAPED_SLASHES);

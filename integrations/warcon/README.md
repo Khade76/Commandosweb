@@ -25,9 +25,14 @@ with each transport, production build, and browser interactions. Only WARCON's
 web service was recreated; database, worker and game servers were not restarted.
 
 All three adapter source files are protected by the host updater's hash manifest.
-The automatic updater remains paused on a **pre-existing** upstream migration
-journal conflict (`0049_feed_match_events` versus local `0049_pending_seed_time`).
-Resolve and test that collision separately before re-enabling automatic updates.
+The migration journal conflict was repaired later on 15 October 2026. Both
+`0049_pending_seed_time` and `0049_feed_match_events` retain their original
+identities, timestamps and SQL; only the journal display indexes were combined.
+The host updater now safely reconciles additive journal entries, while still
+requiring explicit approval for new SQL migrations or changes to custom code.
+It also checks durable seed progress, reserve history, rules and season settings
+before/after releases. All 48 protected file hashes matched after deployment;
+a second update run made no changes or restarts. Automatic updates are enabled.
 
 This candidate targets the WARCON update reviewed on 12 October 2026. It retains
 the historical session/feed calculations for `all`, `7d`, `30d`, and `90d`, while

@@ -129,7 +129,12 @@ WARDOGS_STATS_API_KEY=LONG_RANDOM_SECRET
 WARDOGS_STATS_SERVERS=SERVER_1_ID,SERVER_2_ID,SERVER_3_ID,SERVER_4_ID,SERVER_5_ID
 ```
 
-The website offers the same 7-day, 30-day, 90-day and all-time periods as WARCON. Cash is WARCON's sum of recorded session cash, not a wallet balance or earned-income measure.
+The website defaults to WARCON's organisation-current season; archived seasons,
+7-day, 30-day, 90-day and all-time periods remain selectable. The existing Discord
+stats commands use the same current-season default through the PHP endpoint.
+The 44th's Season 2 starts at 10:00am BST on 15 October 2026 (09:00 UTC), without
+resetting statistics or seeding progress. Cash is WARCON's sum of recorded session
+cash, not a wallet balance or earned-income measure.
 
 ## Temporary MariaDB fallback
 

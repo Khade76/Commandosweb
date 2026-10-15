@@ -2,7 +2,32 @@
 
 WARCON is the persistent source of truth for `/stats` on `44thwardogs.com`.
 
-## Stats adapter v2 (validated; not deployed)
+## Stats adapter v2
+
+Deployed on 15 October 2026. The 44th organisation uses community seasons:
+Season 1 (`44th-season-1`) runs from 10 September 2026 00:00 UTC until
+15 October 2026 09:00 UTC; Season 2 (`44th-season-2`) starts at that cutoff,
+**10:00am BST on 15 October**. Official game-season dates are unchanged.
+
+The website, PHP proxy and existing Discord `/stats` / `/top10` requests now
+default to `range=current`, resolved from WARCON's organisation setting.
+Explicit `range=all` retains the previous historical totals; `range=s:<key>`
+keeps archived seasons available. Nothing is purged or reset, including seeding.
+Completed matches belong to the season in which they end, including matches
+crossing the cutoff. Metadata returns `currentSeason` and `defaultRange`.
+
+Activation checks: all twelve season/scope K/D aggregates matched independent
+match-row queries in a read-only transaction; 848 WARCON library tests and 35
+isolated season/totals tests passed (one dictionary test skipped), type check
+reported zero errors/warnings, and a full database backup was restored and
+compared in isolation. Website checks covered 16 Node tests, 40 PHP assertions
+with each transport, production build, and browser interactions. Only WARCON's
+web service was recreated; database, worker and game servers were not restarted.
+
+All three adapter source files are protected by the host updater's hash manifest.
+The automatic updater remains paused on a **pre-existing** upstream migration
+journal conflict (`0049_feed_match_events` versus local `0049_pending_seed_time`).
+Resolve and test that collision separately before re-enabling automatic updates.
 
 This candidate targets the WARCON update reviewed on 12 October 2026. It retains
 the historical session/feed calculations for `all`, `7d`, `30d`, and `90d`, while
@@ -36,7 +61,8 @@ The website adds server/period-preserving profile permalinks, searchable player
 comparisons, lazy career details, and clear unavailable/empty states. Only the
 same-origin PHP proxy sees the bearer key. It requires adapter version 2 for new
 queries and checks returned scope, period and career identity. Existing bots can
-continue using the unchanged player/summary fields and all-time defaults.
+continue using the unchanged player/summary fields; their default is now the
+organisation's current season, matching the website.
 
 ### Deployment gate (requires approval; do not use the old single-file install)
 
@@ -86,7 +112,7 @@ patches. They are not the deployment procedure for this three-file v2 adapter.
 No production restart, website publication or updater-manifest modification was
 part of validation. Live end-to-end checks remain part of an approved deployment.
 
-The current route reads the same kill feed, match outcomes and session fields as WARCON's leaderboard. It aggregates Servers #1–#5 by default, or one server with `server=1` through `server=5`. `range=7d|30d|90d|all` and `sort=kills|deaths|kd|perHour|time|seeded|matches|wins|winRate|cash` match WARCON's leaderboard choices. The website and Discord bot use all-time unless a website visitor selects another period. Leader cards apply WARCON's 60-minute minimum playtime.
+The current route aggregates Servers #1–#5 by default, or one server with `server=1..5`. `range=current|s:<key>|7d|30d|90d|all` selects the period. The website and Discord bot default to the organisation's current season. Explicit all-time and rolling periods retain historical session/feed totals, while seasons use native completed-match totals and session activity. Leader cards apply WARCON's 60-minute minimum playtime.
 
 The older Standard/Hardcore split and `cash_earned` patch instructions below are historical and are not required by the current route. Cash now means WARCON's sum of session cash. Kills and deaths combine feed events with the recorded session totals from sessions completed before the kill feed was enabled on each server on 19 September 2026. Sessions crossing that boundary are excluded from the historical addition because their counters cannot be split without double counting. Historical Hardcore events remain in all-time totals.
 

@@ -41,8 +41,10 @@ try {
     }
     [$status, $data, $headers, $body] = request('');
     check($status === 200 && $data['group'] === 'all', 'Legacy default succeeds with server-side bearer token');
+    check($data['received']['range'] === 'current', 'Default uses the organisation current season');
     check(!str_contains($body, 'test-stats-key'), 'Secret never appears in response');
     check(in_array('Cache-Control: no-store', $headers, true), 'Proxy remains no-store');
+    check(request('range=all')[1]['received']['range'] === 'all', 'Explicit all-time remains available');
     $id = '76561198000000001';
     foreach (['player=' . $id, 'career=' . $id, 'meta=1', 'leaders=1'] as $mode) {
         [$status, $data] = request('server=5&range=s%3Awardogs-1&' . $mode);
@@ -55,7 +57,7 @@ try {
     check(request('', 'POST')[0] === 405, 'Writes rejected');
     foreach (['server=5&search=wrong-server', 'search=wrong-server', 'range=7d&search=wrong-period',
         'player=' . $id . '&search=wrong-player', 'career=' . $id . '&search=wrong-career',
-        'meta=1&search=old-version', 'player=' . $id . '&search=old-version',
+        'meta=1&search=old-version', 'range=current&search=old-version', 'player=' . $id . '&search=old-version',
         'range=s%3Awardogs-1&search=old-version', 'search=upstream-error'] as $query) {
         [$status, $data, $headers, $body] = request($query);
         check($status === 503, 'Mismatched/old/failed upstream rejected: ' . $query);

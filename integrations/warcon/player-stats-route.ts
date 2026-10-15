@@ -6,7 +6,7 @@ import { ApiError, apiJson, int, route, str } from '$lib/server/http';
 import { createStatsResponseCache } from '$lib/server/stats-response-cache';
 import { boardBase, rowToPlayer, type StatsRow } from '$lib/server/wardogs-stats-base';
 import { createSnapshotCache, makeRankings, METRICS, type Aggregate } from '$lib/server/wardogs-stats-snapshot';
-import { orgSeasons, pickable, seasonWindow } from '$lib/server/seasons';
+import { orgSeasons, pickable, resolveWindow, seasonWindow } from '$lib/server/seasons';
 import { loadCareer, rangeBase, seasonBase } from '$lib/server/leaderboards';
 const finite = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0;
 const sqlList = (v: string[]) => sql.join(v.map(x => sql`${x}`), sql`, `);
@@ -70,9 +70,11 @@ const uncachedGET = route(async (event) => {
 
 	const orgIds = [...new Set(numbered.map(row => row.orgId))];
 	if (orgIds.length !== 1) throw new ApiError(503, 'Stats servers must belong to one organisation.');
-	const seasons = pickable(await orgSeasons(env, orgIds[0]));
+	const organisationSeasons = await orgSeasons(env, orgIds[0]);
+	const seasons = pickable(organisationSeasons);
+	const currentWindow = resolveWindow('current', organisationSeasons);
 	const head = { group: 'all', server, source: 'warcon-leaderboard', version: 2 };
-	if (event.url.searchParams.get('meta') === '1') return apiJson({ ...head, seasons });
+	if (event.url.searchParams.get('meta') === '1') return apiJson({ ...head, seasons, defaultRange: currentWindow.range, currentSeason: currentWindow.season });
 	const careerId = event.url.searchParams.get('career');
 	if (careerId !== null) {
 		if (!/^\d{17}$/.test(careerId)) throw new ApiError(400, 'Invalid Steam ID.');
@@ -89,11 +91,12 @@ const uncachedGET = route(async (event) => {
 			streak: career.streak, maps: career.maps, factions: career.factions, last: career.last
 		}});
 	}
-	const range = event.url.searchParams.get('range') || 'all';
+	const range = event.url.searchParams.get('range') || 'current';
+	const resolvedRange = range === 'current' ? currentWindow.range : range;
 	const durations: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90 };
-	const season = seasons.find(s => `s:${s.key}` === range);
-	if (range !== 'all' && !(range in durations) && !season) throw new ApiError(400, 'Invalid or not-yet-started period.');
-	const from = season ? new Date(season.startsAt) : range === 'all' ? new Date(0) : new Date(Date.now() - durations[range] * 86400_000);
+	const season = seasons.find(s => `s:${s.key}` === resolvedRange);
+	if (resolvedRange !== 'all' && !(resolvedRange in durations) && !season) throw new ApiError(400, 'Invalid or not-yet-started period.');
+	const from = season ? new Date(season.startsAt) : resolvedRange === 'all' ? new Date(0) : new Date(Date.now() - durations[resolvedRange] * 86400_000);
 	const sort = str(event.url.searchParams.get('sort') || 'kills', 20);
 	if (!METRICS.includes(sort)) throw new ApiError(400, 'Invalid leaderboard sort.');
 	const playerId = event.url.searchParams.get('player');
@@ -101,7 +104,7 @@ const uncachedGET = route(async (event) => {
 	const search = str(event.url.searchParams.get('search'), 80);
 	const limit = int(event.url.searchParams.get('limit'), 100, 1, 500);
 	const offset = int(event.url.searchParams.get('offset'), 0, 0, 100000);
-	const key = JSON.stringify([ids, range, season?.startsAt, season?.endsAt, feedStarts]);
+	const key = JSON.stringify([ids, resolvedRange, season?.startsAt, season?.endsAt, feedStarts]);
 	let snapshot: Snapshot;
 	try {
 		snapshot = await snapshots(key, async () => {
@@ -157,7 +160,7 @@ const uncachedGET = route(async (event) => {
 				pages: createSnapshotCache<StatsRow[]>(Date.now, 15_000, 24, 4) };
 		});
 	} catch { throw new ApiError(503, 'Stats are busy or temporarily unavailable; retry shortly.'); }
-	const common = { ...head, range, season: season || null, seasons, snapshotAt: snapshot.at,
+	const common = { ...head, range, resolvedRange, season: season || null, seasons, snapshotAt: snapshot.at,
 		basis: season ? 'completed-matches' : 'historical-sessions-and-feed', generatedAt: new Date().toISOString() };
 	const mapBasic = (r: Aggregate) => rowToPlayer({
 		...r, steamId: r.steam_id, firstSeen: r.first_seen, lastSeen: r.last_seen,

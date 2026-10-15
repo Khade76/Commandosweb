@@ -21,8 +21,8 @@ $search = isset($_GET['search']) ? substr(trim((string)$_GET['search']), 0, 80) 
 $sort = isset($_GET['sort']) ? (string)$_GET['sort'] : 'kills';
 if (!in_array($sort, $allowedSorts, true)) $sort = 'kills';
 $group = 'all';
-$range = isset($_GET['range']) ? (string)$_GET['range'] : 'all';
-if (!in_array($range, ['7d', '30d', '90d', 'all'], true) && !preg_match('/^s:[A-Za-z0-9_-]{1,80}$/', $range)) {
+$range = isset($_GET['range']) ? (string)$_GET['range'] : 'current';
+if (!in_array($range, ['current', '7d', '30d', '90d', 'all'], true) && !preg_match('/^s:[A-Za-z0-9_-]{1,80}$/', $range)) {
     http_response_code(400);
     echo json_encode(['error' => 'Invalid period']);
     exit;
@@ -138,7 +138,7 @@ try {
             || ($server !== '' && (string)($warconPayload['server'] ?? '') !== $server)) {
             throw new RuntimeException('WARCON stats did not honor the requested scope');
         }
-        if ((isset($query['player']) || isset($query['career']) || isset($query['meta']) || str_starts_with($range, 's:'))
+        if ((isset($query['player']) || isset($query['career']) || isset($query['meta']) || $range === 'current' || str_starts_with($range, 's:'))
             && (int)($warconPayload['version'] ?? 0) < 2) {
             throw new RuntimeException('The WARCON stats adapter needs updating');
         }

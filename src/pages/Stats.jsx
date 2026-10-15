@@ -71,7 +71,7 @@ async function fetchStatsPayload(options = {}) {
   } else if (!Array.isArray(payload.players) || !Number.isFinite(Number(payload.total))) {
     throw new Error('The stats API returned an invalid player list.')
   }
-  if (!query.meta && !query.career && payload.range !== (query.range || 'all')) throw new Error('The API returned the wrong period.')
+  if (!query.meta && !query.career && payload.range !== (query.range || 'current')) throw new Error('The API returned the wrong period.')
   if (query.player && payload.version < 2) throw new Error('Full player rankings require the updated stats service.')
   return payload
 }
@@ -184,7 +184,7 @@ function PlayerProfile({ player, scope, range, server, onBack, profileRef, loadi
 export default function Stats() {
   const [filters, setFilters] = useState(() => {
     const params = new URLSearchParams(window.location.search)
-    return { search: '', sort: 'kills', range: validPeriod(params.get('range')) ? params.get('range') : 'all', server: /^[1-5]$/.test(params.get('server')) ? params.get('server') : '', page: 1, pageSize: 25 }
+    return { search: '', sort: 'kills', range: validPeriod(params.get('range')) ? params.get('range') : 'current', server: /^[1-5]$/.test(params.get('server')) ? params.get('server') : '', page: 1, pageSize: 25 }
   })
   const { search, sort, range, server, page, pageSize } = filters
   const [players, setPlayers] = useState([])
@@ -201,6 +201,7 @@ export default function Stats() {
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState('')
   const [seasons, setSeasons] = useState([])
+  const [currentSeason, setCurrentSeason] = useState(null)
   const [metaError, setMetaError] = useState('')
   const [snapshotAt, setSnapshotAt] = useState(null)
   const [leadersOpen, setLeadersOpen] = useState(false)
@@ -210,7 +211,7 @@ export default function Stats() {
   const profileRef = useRef(null)
   const returnToBoard = useRef(false)
   const scope = server ? `Server #${server}` : 'All five servers'
-  const periods = [...PERIOD_OPTIONS, ...seasons.map(season => [`s:${season.key}`, `${season.name} (${season.kind === 'custom' ? 'community' : 'official'})`])]
+  const periods = [...PERIOD_OPTIONS.map(([key, label]) => [key, key === 'current' && currentSeason ? `${currentSeason.name} (current)` : label]), ...seasons.map(season => [`s:${season.key}`, `${season.name} (${season.kind === 'custom' ? 'community' : 'official'})`])]
   const periodLabel = periods.find(([key]) => key === range)?.[1] || 'Selected season'
   const sortLabel = SORT_OPTIONS.find(([key]) => key === sort)?.[1] || 'Kills'
   const pagination = pageInfo(total, page, pageSize)
@@ -277,7 +278,7 @@ export default function Stats() {
     const controller = new AbortController()
     setSeasons([]); setMetaError('')
     fetchStatsPayload({ meta: true, server, signal: controller.signal })
-      .then(payload => { if (!controller.signal.aborted) setSeasons(payload.seasons) })
+      .then(payload => { if (!controller.signal.aborted) { setSeasons(payload.seasons); setCurrentSeason(payload.currentSeason || null) } })
       .catch(() => { if (!controller.signal.aborted) setMetaError('Season filters are temporarily unavailable. Existing periods remain available.') })
     return () => controller.abort()
   }, [server, refresh])
@@ -330,7 +331,7 @@ export default function Stats() {
         <article><span>Tracked hours</span><strong>{summary ? formatNumber(Math.round(Number(summary.secondsTracked || 0) / 3600)) : '—'}</strong></article>
       </div>
 
-      {range.startsWith('s:') && <p className="stats-notice">Season statistics use WARCON’s completed-match records and session activity. Matches count by their end time. These are separate from the historical K/D totals used by all-time and rolling-period boards.</p>}
+      {(range === 'current' || range.startsWith('s:')) && <p className="stats-notice">Season statistics use WARCON’s completed-match records and session activity. Matches count by their end time. These are separate from the historical K/D totals used by all-time and rolling-period boards.{range === 'current' && currentSeason && ` ${currentSeason.name} started ${new Date(currentSeason.startsAt).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'long', timeStyle: 'short' })} UK time.`}</p>}
       {metaError && <p role="status" className="stats-footnote">{metaError}</p>}
       {snapshotAt && <p className="stats-footnote">Snapshot: {formatLastSeen(snapshotAt)} · shared for up to 15 seconds</p>}
       {!selectedId && <>

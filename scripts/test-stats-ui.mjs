@@ -8,10 +8,11 @@ page.on('pageerror', error => errors.push(error.message))
 const id = '76561198000000001', other = '76561198000000002'
 const player = { id, name: 'Test player', totalKills: 100, totalDeaths: 20, kd: 5, killsPerHour: 10, secondsTracked: 36000, matchesSeen: 10, wins: 6, losses: 4, draws: 0, winRate: .6, cash: 10000, seedMinutes: 5, serverCounts: {'server-1': 2}, factionCounts: {Faction: 2}, aliases: ['Old alias'], ranks: Object.fromEntries(['kills','kd','matches','time'].map(key => [key, {rank:751,total:42000}])) }
 const season = {key:'wardogs-1',name:'Season 1',kind:'official',startsAt:'2026-09-10T16:00:00Z',endsAt:null}
+const currentSeason = {key:'44th-season-2',name:'Season 2',kind:'custom',startsAt:'2026-10-15T09:00:00Z',endsAt:null}
 await page.route('**/api/player-stats.php?*', async route => {
   const query = new URL(route.request().url()).searchParams
   requests.push(Object.fromEntries(query))
-  const head = {version:2, group:'all',server:query.get('server') ? Number(query.get('server')) : null,range:query.get('range'),seasons:[season],source:'warcon-leaderboard',snapshotAt:'2026-10-12T20:00:00Z'}
+  const head = {version:2, group:'all',server:query.get('server') ? Number(query.get('server')) : null,range:query.get('range'),seasons:[season,currentSeason],currentSeason,source:'warcon-leaderboard',snapshotAt:'2026-10-15T13:00:00Z'}
   let body
   if(query.has('meta')) body = head
   else if(query.has('career')) body = {...head,playerId:query.get('career'),career:{basis:'completed-matches',period:'all',matches:10,vehicleKills:3,killStreak:7,longestM:250,streak:{kind:'win',n:2},maps:[{key:'Test map',matches:10,wins:6,losses:4,draws:0,kills:100,deaths:20}],factions:[],last:[{matchId:1,serverId:'1',serverName:'Server #1',map:'Test map',faction:'Faction',result:'win',kills:10,deaths:2,cashDelta:100,endedAt:'2026-10-12T19:00:00Z'}]}}
@@ -21,6 +22,10 @@ await page.route('**/api/player-stats.php?*', async route => {
 })
 try {
   await page.goto(process.env.STATS_TEST_URL || 'http://127.0.0.1:4173/stats')
+  await page.getByRole('option', {name:'Season 2 (current)',exact:true}).waitFor({state:'attached'})
+  await page.getByText(/Season 2 started 15 October 2026 at 10:00 UK time/).waitFor()
+  assert.equal(await page.getByLabel('Period',{exact:true}).inputValue(),'current')
+  assert.ok(requests.some(q=>q.range==='current' && !q.meta))
   await page.getByRole('button', {name:/Test player/}).click()
   await page.getByRole('heading', {name:'Full leaderboard positions'}).waitFor()
   await page.getByText('#751 of 42,000', {exact:true}).first().waitFor()

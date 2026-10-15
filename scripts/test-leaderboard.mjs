@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { statsParams, pageInfo, isRankedView, SORT_OPTIONS, PERIOD_OPTIONS } from '../src/lib/leaderboard.js'
 
 test('defaults use the combined WARCON board and 25 rows', () => {
-  assert.deepEqual(Object.fromEntries(statsParams()), { group: 'all', range: 'all', sort: 'kills', limit: '25', offset: '0' })
+  assert.deepEqual(Object.fromEntries(statsParams()), { group: 'all', range: 'current', sort: 'kills', limit: '25', offset: '0' })
 })
 test('every supported metric and period is passed to the server', () => {
   for (const [sort] of SORT_OPTIONS) for (const [range] of PERIOD_OPTIONS) {
@@ -11,6 +11,12 @@ test('every supported metric and period is passed to the server', () => {
     assert.equal(params.get('sort'), sort)
     assert.equal(params.get('range'), range)
   }
+})
+
+test('current season is the default but explicit all-time and archived seasons stay available', () => {
+  assert.equal(statsParams({ range: 'invalid' }).get('range'), 'current')
+  assert.equal(statsParams({ range: 'all' }).get('range'), 'all')
+  assert.equal(statsParams({ range: 's:44th-season-1' }).get('range'), 's:44th-season-1')
 })
 test('all five server scopes work without creating a Hardcore split', () => {
   for (let server = 1; server <= 5; server++) assert.equal(statsParams({ server }).get('server'), String(server))

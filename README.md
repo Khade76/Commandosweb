@@ -68,6 +68,59 @@ Server #3's current website ID is `wardogs-9f71e8ef`; the old Qonzer Hardcore ca
 
 Adding #4 to WARCON does not automatically add it to the website stats allowlist. Append its existing **WARCON database server ID** to `WARDOGS_STATS_SERVERS`, preserving the other IDs, and recreate the relevant WARCON service containers to load the environment change. Do not substitute XRealm ID `12577` for the WARCON ID. See `integrations/warcon/README.md` for the read-only ID lookup and verification steps.
 
+## Joining through the 44th website
+
+Discord buttons and the website's **Join Server** buttons can now use the 44th-hosted page:
+
+```text
+https://44thwardogs.com/join?server=1
+https://44thwardogs.com/join?server=wardogs-12577
+```
+
+Numbered links support Servers #1–#5. Stable website IDs also work, including custom IDs configured with an explicit `number`. The page resolves the requested record through the same-origin join endpoint, attempts to open the validated Steam link once, and keeps a visible **Open in Steam** button for browsers that require a click. It retains copyable persistent join codes and the manual joining steps. It does not contact or link to an external join service.
+
+### Configure the server's Steam lobby
+
+In the **existing private** `wardogs-secrets.php`, add the current Steam lobby link to the matching entry in `servers`. Preserve its ID, RCON connection, join code and all other settings:
+
+```php
+'steamJoinUrl' => 'steam://joinlobby/1867240/PASTE_THIS_SERVERS_CURRENT_LOBBY_ID',
+```
+
+Alternatively, set the numeric lobby ID alone, keeping it **quoted as a string**:
+
+```php
+'steamLobbyId' => 'PASTE_THIS_SERVERS_CURRENT_LOBBY_ID',
+```
+
+Use one of these fields and leave the other blank. If both are set they must identify the same lobby. Malformed, conflicting, wrong-game or arbitrary web URLs do not produce a launch link. Invalid or missing lobby configuration leaves manual joining available. The public response contains only the server's display identity, join code and validated lobby link; RCON passwords, management addresses and other configuration remain private.
+
+**The lobby ID is different from the persistent UUID join code.** Current checked [WARDOGS RCON documentation](https://github.com/warcon-app/warcon/blob/main/docs/wardogs-api.md) describes `/v1/server-id` as the persistent code and does not document a Steam lobby resolver. This implementation therefore uses the configured lobby and does **not** discover a replacement automatically. Update the setting when the Steam lobby changes. A valid link is not proof that its lobby remains online. Lobby IDs exceed JavaScript's safe integer range; keep them as decimal strings throughout.
+
+Known website IDs map to their existing server numbers regardless of array order. If you use a custom ID, add `'number' => 1` (or the appropriate number 2–5) to that entry. Disabled records and unknown servers return 404; ambiguous configuration returns 503. Never paste one server's lobby into all five entries.
+
+### Use an existing Steam link directly
+
+An existing lobby link can also be represented on the 44th domain without assigning it to a numbered server:
+
+```text
+Steam:   steam://joinlobby/1867240/109775242493124785
+Website: https://44thwardogs.com/join?lobby=109775242493124785
+```
+
+This route needs no private configuration and makes no claim about which 44th server owns that lobby. It works only while that lobby is valid. It accepts a validated lobby number for WARDOGS only, never an arbitrary destination URL. Specify either `server` or `lobby`, not both.
+
+### Deploy the website before changing the bots
+
+1. Build with `npm ci` and `npm run build`.
+2. Upload the complete `dist/` to OVH `/www`, including the updated hidden `.htaccess`, `api/join.php`, `api/join-common.php` and frontend assets. Keep the existing private secrets file above `/www`; add lobby settings there without replacing it with the example.
+3. Check `/join?server=1` through `/join?server=5`. With a current configured lobby, test **Open in Steam** on a device with Steam and WARDOGS. Without one, confirm the manual join-code fallback appears.
+4. Deploy the companion bot change, then use AMP **Update Application** and restart. Its default destination is `https://44thwardogs.com/join?server=N`. Clear an old explicit `DISCORD_WARDOGS_SERVER_N_JOIN_URL` override if it still points to another site.
+
+The PHP endpoint is `GET /api/join.php`; the optional Node backend supports `/api/join` and `/api/join.php`. Responses are not cached. Node/local lobby settings use `WARDOGS_SERVER_N_STEAM_LOBBY_ID` or `WARDOGS_SERVER_N_STEAM_JOIN_URL` from `.env`; production OVH continues using `wardogs-secrets.php`.
+
+Validation commands: `npm run test:join`, `npm run test:join:php` (PHP 8 required), and `npm run test:join:ui` against a local built server. The browser test uses Playwright and accepts `PLAYWRIGHT_MODULE`, `PLAYWRIGHT_EXECUTABLE_PATH` and `JOIN_TEST_URL` overrides. It does not join a live game or call live RCON.
+
 ## Player stats — WARCON
 
 WARCON is the target single source of truth for player search/statistics:

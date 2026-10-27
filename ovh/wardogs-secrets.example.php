@@ -15,51 +15,69 @@ return [
 
     // Website live-status/RCON connections. Stats are presented publicly as one combined
     // 44th pool even though WARCON may retain its internal Standard/Hardcore classification.
+    // Optional direct joining: set ONE current Steam lobby value per server below.
+    // Keep IDs quoted as strings. Do not use a persistent join UUID or an RCON address.
+    // A lobby may change after a restart; blank values leave the manual join-code fallback.
     'servers' => [
         [
             'id' => 'wardogs-278c7bc5',
+            'number' => 1,
             'name' => '44th Commandos #1',
             'url' => 'http://165.217.136.52:9001',
             'password' => 'CHANGE_ME_SERVER_1_RCON_PASSWORD',
             'joinCode' => '89607037-07ad-4039-8f7d-1fb9a46e707b',
+            // 'steamLobbyId' => '',
+            // 'steamJoinUrl' => '', // steam://joinlobby/1867240/<CURRENT_LOBBY_ID>
             'maxPlayers' => 100,
         ],
         [
             'id' => 'wardogs-9290beb1',
+            'number' => 2,
             'name' => '44th Commandos #2',
             'url' => 'http://165.217.136.99:9006',
             'password' => 'CHANGE_ME_SERVER_2_RCON_PASSWORD',
             'joinCode' => '6eccb2c4-4e2a-4cf2-b2d5-67faf8e283b1',
+            // 'steamLobbyId' => '',
+            // 'steamJoinUrl' => '', // steam://joinlobby/1867240/<CURRENT_LOBBY_ID>
             'maxPlayers' => 100,
         ],
         [
             // Server #3 is another Bisect-hosted normal server. Replace these placeholders
             // with the current Bisect allocation/RCON details in the live wardogs-secrets.php.
             'id' => 'wardogs-9f71e8ef',
+            'number' => 3,
             'name' => '44th Commandos #3',
             'url' => 'http://CHANGE_ME_SERVER_3_BISECT_IP:CHANGE_ME_SERVER_3_RCON_PORT',
             'password' => 'CHANGE_ME_SERVER_3_RCON_PASSWORD',
             'joinCode' => '529de475-7326-4178-81f0-f720aa9c9206',
+            // 'steamLobbyId' => '',
+            // 'steamJoinUrl' => '', // steam://joinlobby/1867240/<CURRENT_LOBBY_ID>
             'maxPlayers' => 100,
             'region' => 'Europe / UK',
         ],
         [
             // XRealm ID 12577 is the website/bot lookup key, not the WARCON database ID.
             'id' => 'wardogs-12577',
+            'number' => 4,
             'name' => '44th Commandos #4 | Hardcore | discord.gg/44thwardogs',
             'url' => 'http://84.32.103.104:20001',
             'password' => 'CHANGE_ME_SERVER_4_RCON_PASSWORD',
             'joinCode' => '7f15ef51-2673-4eab-b3c8-d8176a3b41e4',
+            // 'steamLobbyId' => '',
+            // 'steamJoinUrl' => '', // steam://joinlobby/1867240/<CURRENT_LOBBY_ID>
             'region' => 'XRealm',
             'mode' => 'Hardcore',
         ],
         [
             // XRealm ID 12648. Keep the RCON password only in the private live file.
             'id' => 'wardogs-12648',
+            'number' => 5,
             'name' => '44th Commandos #5 | discord.gg/44thwardogs',
             'url' => 'http://88.216.222.131:20001',
             'password' => 'CHANGE_ME_SERVER_5_RCON_PASSWORD',
             'joinCode' => '3500961c-24df-40b1-b299-6a897eddc2bd',
+            // 'steamLobbyId' => '',
+            // 'steamJoinUrl' => '', // steam://joinlobby/1867240/<CURRENT_LOBBY_ID>
             'region' => 'XRealm',
         ],
     ],

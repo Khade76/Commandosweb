@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { DISCORD_URL, STEAM_LAUNCH_URL, images, servers as fallbackServers } from '../data/site.js'
+import { Link } from 'react-router-dom'
+import { DISCORD_URL, images, servers as fallbackServers } from '../data/site.js'
 import './servers-extra.css'
 
 const SERVERS_API_URL = import.meta.env.VITE_SERVERS_API_URL
@@ -187,7 +188,7 @@ export default function Servers() {
                 </div>
                 {joinCode && (
                   <div className="actions server-actions">
-                    <a className="button primary" href={STEAM_LAUNCH_URL} onClick={() => copyJoinId(joinCode)}>Join Server</a>
+                    <Link className="button primary" to={`/join?server=${encodeURIComponent(server.id)}`}>Join Server</Link>
                     <button className="button" type="button" onClick={() => copyJoinId(joinCode)}>{copiedJoinId === String(joinCode) ? 'Copied' : 'Copy Join Code'}</button>
                   </div>
                 )}
@@ -215,7 +216,7 @@ export default function Servers() {
         </div>
       </section>
       <section className="section cards-three">
-        <article><span>JOIN</span><h3>Join Server</h3><p>Use the Join Server button to launch WARDOGS through Steam and copy the server&apos;s persistent join code automatically.</p></article>
+        <article><span>JOIN</span><h3>Join Server</h3><p>Use the Join Server button to open the 44th join page. Launch the server through Steam, or copy its join code to join from inside WARDOGS.</p></article>
         <article><span>MATCH</span><h3>Map & scores</h3><p>Current map, matching map artwork and Valkyra, Lonestar and Manticore scores are pulled from the live WARDOGS status.</p></article>
         <article><span>OPS</span><h3>Built to expand</h3><p>The server API is structured so additional hosts and WARDOGS services can be added without rebuilding this page.</p></article>
       </section>

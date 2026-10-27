@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getServers } from './servers.js'
+import { joinResponse, localJoinConfig } from './join.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -29,6 +30,19 @@ app.get('/api/servers', async (_req, res) => {
     console.error('Unable to load server directory:', error)
     res.status(502).json({ error: 'Unable to load server status' })
   }
+})
+
+// Support both paths so an OVH production build can also be previewed locally.
+app.all(['/api/join', '/api/join.php'], (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  res.set('X-Content-Type-Options', 'nosniff')
+  if (req.method !== 'GET') {
+    res.set('Allow', 'GET')
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+  const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?') + 1) : ''
+  const { status, body } = joinResponse(query, localJoinConfig())
+  return res.status(status).json(body)
 })
 
 if (existsSync(distPath)) {

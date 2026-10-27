@@ -385,7 +385,8 @@ em { font-style: normal; color: var(--gold); }
 /* Rules categories use native details/summary for keyboard and touch access. */
 .rules-hero { min-height: 58svh; }
 .rules-content { max-width: 1000px; }
-.rules-content > .section-copy { max-width: 720px; margin-block: 24px 36px; }
+.rules-content > h2 { font-size: clamp(2.4rem, 5vw, 4.5rem); scroll-margin-top: 110px; }
+.rules-notice { margin: 28px 0 36px; border-left: 3px solid var(--gold); padding: 18px 24px; background: var(--panel); }
 .rules-sections { display: grid; gap: 16px; }
 .rules-category { border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 110px; }
 .rules-category[open] { border-color: rgba(242, 184, 39, .5); }
@@ -399,18 +400,25 @@ em { font-style: normal; color: var(--gold); }
 .rules-status { color: var(--muted); font-size: .75rem; white-space: nowrap; }
 .rules-category-body { border-top: 1px solid var(--line); padding: 8px 28px 24px; }
 .rules-category-body p, .rules-help p { color: var(--muted); }
-.rules-list { padding-left: 28px; margin-bottom: 0; }
-.rules-list li { padding: 20px 0 20px 10px; border-top: 1px solid var(--line); }
-.rules-list li::marker { color: var(--gold); font-weight: 700; }
+.rules-list { list-style: none; padding: 0; margin: 0; }
+.rules-list > li { padding: 20px 0; border-top: 1px solid var(--line); }
+.rules-list > li:first-child { border-top: 0; }
+.rule-number { color: var(--gold); margin-right: .35em; }
 .rules-list h3 { font-size: 1.4rem; line-height: 1.2; letter-spacing: 0; }
 .rules-list p { margin: 8px 0 0; }
+.rules-category-body strong { color: var(--text); }
+.rules-enforcement-actions { padding-left: 24px; color: var(--muted); }
+.rules-enforcement-actions li { padding-block: 4px; }
+.rules-enforcement-actions li::marker { color: var(--gold); }
+.rules-agreement { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
 .rules-help { margin-top: 36px; border-left: 3px solid var(--gold); padding: 10px 28px; }
 .rules-help h3 { font-size: 2rem; }
 .rules-help p { max-width: 720px; }
 @media (max-width: 620px) {
-  .rules-category summary { padding: 18px 14px; gap: 10px; flex-wrap: wrap; }
-  .rules-category-title { flex-basis: 65%; }
-  .rules-status { margin-left: 30px; }
+  .rules-category summary { padding: 18px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 10px; }
+  .rules-category summary::after { grid-column: 3; grid-row: 1; line-height: 1; }
+  .rules-category-title { grid-column: 2; }
+  .rules-status { grid-column: 2; grid-row: 2; }
   .rules-category-body { padding: 8px 18px 18px; }
 }
 
